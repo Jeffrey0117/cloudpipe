@@ -1,0 +1,22 @@
+{
+  "domain": "isnowfriend.com",
+  "cloudflared_path": "%LOCALAPPDATA%\\Microsoft\\WinGet\\Packages\\Cloudflare.cloudflared_Microsoft.Winget.Source_8wekyb3d8bbwe\\cloudflared.exe",
+  "services": [
+    {
+      "name": "example-proxy",
+      "enabled": false,
+      "type": "proxy",
+      "target": "https://api.example.com",
+      "subdomain": "example",
+      "port": 8787
+    },
+    {
+      "name": "example-custom",
+      "enabled": false,
+      "type": "custom",
+      "entry": "servers/custom/example.js",
+      "subdomain": "custom",
+      "port": 8788
+    }
+  ]
+}
