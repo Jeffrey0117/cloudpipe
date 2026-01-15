@@ -1,0 +1,11 @@
+{
+  "name": "cloudpipe",
+  "version": "1.0.0",
+  "description": "API Tunnel Service",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js",
+    "tunnel": "node tunnel.js"
+  }
+}

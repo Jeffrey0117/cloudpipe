@@ -1,22 +1,7 @@
 {
   "domain": "isnowfriend.com",
+  "port": 8787,
+  "subdomain": "api",
   "cloudflared_path": "%LOCALAPPDATA%\\Microsoft\\WinGet\\Packages\\Cloudflare.cloudflared_Microsoft.Winget.Source_8wekyb3d8bbwe\\cloudflared.exe",
-  "services": [
-    {
-      "name": "railway-proxy",
-      "enabled": true,
-      "type": "proxy",
-      "target": "https://api-production-1ea7.up.railway.app",
-      "subdomain": "api",
-      "port": 8787
-    },
-    {
-      "name": "example-custom",
-      "enabled": false,
-      "type": "custom",
-      "entry": "servers/custom/example.js",
-      "subdomain": "custom",
-      "port": 8788
-    }
-  ]
+  "standalone": []
 }
