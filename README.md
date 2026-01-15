@@ -1,50 +1,76 @@
 # CloudPipe
 
-本地服務快速部署網關。透過 Cloudflare Tunnel 將本地服務暴露到公網。
+Personal Deploy Platform - 個人部署平台
+
+透過 Cloudflare Tunnel 將本地服務快速部署到公網。
 
 ## 功能
 
-- **路徑式部署**: `api.isnowfriend.com/myapp` → 轉發到指定服務
-- **子域名式部署**: `myapp.isnowfriend.com` → 轉發到指定服務
-- **熱載入**: 丟 `.js` 檔到 `services/` 即生效
-- **自動路由**: 根據 `match()` 規則匹配請求
+### 兩種部署模式
+
+| 模式 | 網址 | 說明 |
+|------|------|------|
+| API 服務 | `epi.isnowfriend.com/xxx` | 路徑式，適合 API、Webhook |
+| 專案部署 | `xxx.isnowfriend.com` | 子域名式，適合完整網站 |
+
+### 特色
+
+- **Dashboard UI** - 視覺化管理介面
+- **拖拽上傳** - 丟檔案即部署
+- **自動 DNS** - 上傳時自動建立 CNAME
+- **熱載入** - 不需重啟服務
+- **靜態 + 後端** - 支援純靜態或 Node.js 應用
+
+## 快速開始
+
+```bash
+# 啟動
+start.bat
+
+# 或
+node index.js
+```
+
+打開 `https://epi.isnowfriend.com` 進入 Dashboard。
 
 ## 目錄結構
 
 ```
 cloudpipe/
-├── index.js          # 入口
-├── config.json       # 設定
-├── start.bat         # 一鍵啟動（服務 + tunnel）
-├── cloudflared.yml   # Tunnel 設定
-├── src/core/         # 核心程式
-│   ├── server.js     # 啟動器
-│   ├── registry.js   # 服務註冊
-│   └── router.js     # 路由器
-├── services/         # 你的服務放這裡
-│   ├── _example.js   # 範例（底線開頭不載入）
-│   └── proxy.js      # Railway 代理服務
-└── public/
-    └── index.html    # 首頁
+├── index.js              # 入口
+├── config.json           # 設定
+├── start.bat             # 一鍵啟動
+├── cloudflared.yml       # Tunnel 設定
+├── SPEC.md               # 規格文檔
+│
+├── public/               # Dashboard 前端
+│   ├── index.html
+│   ├── style.css
+│   └── app.js
+│
+├── services/             # API 服務（路徑式）
+│   └── proxy.js          # 範例：Railway 代理
+│
+├── apps/                 # 專案（子域名式）
+│   └── {app-name}/
+│       ├── index.html    # 靜態網站
+│       └── server.js     # 或 Node.js 後端
+│
+└── src/core/             # 核心（勿動）
+    ├── server.js
+    ├── registry.js
+    ├── router.js
+    └── admin.js
 ```
 
-## 快速開始
-
-1. **建立服務檔** - 在 `services/` 新增 `.js` 檔案
-2. **執行** - 點 `start.bat` 或 `node index.js`
-3. **存取** - 透過 `api.isnowfriend.com` 訪問
-
-## 服務範例
+## API 服務範例
 
 ```javascript
 // services/my-api.js
 module.exports = {
-  // 匹配 /my-api/* 路徑
   match(req) {
     return req.url.startsWith('/my-api');
   },
-
-  // 處理請求
   handle(req, res) {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ hello: 'world' }));
@@ -52,26 +78,29 @@ module.exports = {
 };
 ```
 
-## 代理範例
+## 專案範例
+
+### 靜態網站
+```
+apps/blog/
+└── index.html
+```
+存取：`https://blog.isnowfriend.com`
+
+### Node.js 應用
+```
+apps/api/
+└── server.js
+```
 
 ```javascript
-// services/proxy.js - 轉發到其他服務
-const https = require('https');
-const { URL } = require('url');
-
-const TARGET = 'https://your-api.example.com';
-
-module.exports = {
-  match(req) {
-    return req.url.startsWith('/api');
-  },
-
-  handle(req, res) {
-    const targetUrl = new URL(req.url, TARGET);
-    // ... 轉發邏輯
-  }
+// apps/api/server.js
+module.exports = function(req, res) {
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end(JSON.stringify({ status: 'ok' }));
 };
 ```
+存取：`https://api.isnowfriend.com`
 
 ## 設定
 
@@ -80,21 +109,10 @@ module.exports = {
 {
   "domain": "isnowfriend.com",
   "port": 8787,
-  "subdomain": "api"
+  "subdomain": "epi"
 }
 ```
 
-## Tunnel 設定
+## License
 
-`cloudflared.yml`:
-```yaml
-tunnel: <tunnel-id>
-credentials-file: ~/.cloudflared/<tunnel-id>.json
-
-ingress:
-  - hostname: api.isnowfriend.com
-    service: http://localhost:8787
-  - hostname: "*.isnowfriend.com"
-    service: http://localhost:8787
-  - service: http_status:404
-```
+MIT

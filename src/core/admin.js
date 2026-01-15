@@ -5,11 +5,16 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 // 目錄路徑
-const ROOT = path.join(__dirname, '..');
+const ROOT = path.join(__dirname, '..', '..');
 const SERVICES_DIR = path.join(ROOT, 'services');
 const APPS_DIR = path.join(ROOT, 'apps');
+
+// Cloudflared 路徑
+const CLOUDFLARED = 'C:\\Users\\jeffb\\cloudflared.exe';
+const TUNNEL_ID = 'afd11345-c75a-4d62-aa67-0a389d82ce74';
 
 // 確保 apps 目錄存在
 if (!fs.existsSync(APPS_DIR)) {
@@ -137,17 +142,32 @@ function uploadApp(req, res) {
     }
 
     const appDir = path.join(APPS_DIR, name);
-    
+
     // 建立目錄
     if (!fs.existsSync(appDir)) {
       fs.mkdirSync(appDir, { recursive: true });
     }
 
-    // 儲存 zip（後續需要解壓）
+    // 儲存 zip
     const zipPath = path.join(appDir, 'upload.zip');
     fs.writeFileSync(zipPath, files.file.data);
 
-    // TODO: 解壓 zip
+    // 解壓 zip
+    try {
+      execSync(`tar -xf "${zipPath}" -C "${appDir}"`, { stdio: 'ignore' });
+      fs.unlinkSync(zipPath); // 刪除 zip
+    } catch (e) {
+      console.error('[admin] 解壓失敗:', e.message);
+    }
+
+    // 自動建立 DNS CNAME
+    try {
+      const hostname = `${name}.isnowfriend.com`;
+      execSync(`"${CLOUDFLARED}" tunnel route dns ${TUNNEL_ID} ${hostname}`, { stdio: 'ignore' });
+      console.log(`[admin] DNS 已建立: ${hostname}`);
+    } catch (e) {
+      console.error('[admin] DNS 建立失敗:', e.message);
+    }
 
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({
