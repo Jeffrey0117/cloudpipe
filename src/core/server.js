@@ -4,7 +4,7 @@
  */
 
 const path = require('path');
-const ServiceRegistry = require('./index');
+const ServiceRegistry = require('./registry');
 
 // 專案根目錄
 const rootDir = path.join(__dirname, '..', '..');
@@ -18,25 +18,17 @@ registry.loadConfig(configPath);
 
 console.log('');
 console.log('========================================');
-console.log('  CLOUDPIPE - API Tunnel Service');
+console.log('  CLOUDPIPE - Local Deploy Gateway');
 console.log('========================================');
 console.log('');
 
-// 掃描排程器服務 (src/services/schedulers/*.js)
-const schedulersDir = path.join(__dirname, 'schedulers');
-registry.scanSchedulers(schedulersDir);
-
-// 掃描獨立服務 (src/services/standalone/{name}/index.js)
-const standaloneDir = path.join(__dirname, 'standalone');
-registry.scanStandalone(standaloneDir);
-
-// 從 config.json 載入額外的 standalone 服務
-registry.loadStandaloneFromConfig(rootDir);
+// 掃描服務 (services/*.js)
+const servicesDir = path.join(rootDir, 'services');
+registry.scanServices(servicesDir);
 
 // 啟動所有服務
 if (!registry.startAll()) {
-  console.log('    Drop a .js file in src/services/schedulers/ directory');
-  console.log('    Or create src/services/standalone/{name}/index.js');
+  console.log('    Drop a .js file in services/ directory');
   process.exit(1);
 }
 

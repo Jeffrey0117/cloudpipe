@@ -1,20 +1,18 @@
 @echo off
-title Cloudpipe
+title CloudPipe
 cd /d "%~dp0"
 
 echo.
-echo ========================================
-echo   CLOUDPIPE - Starting Services
-echo ========================================
+echo   CloudPipe - Local Deploy Gateway
+echo   ================================
 echo.
 
-:: Start API servers in new window
-start "Cloudpipe Servers" cmd /k "node index.js"
+echo [1/2] Starting server...
+start /B node index.js
 
-:: Wait for servers to start
-timeout /t 3 >nul
+timeout /t 2 /nobreak >nul
 
-:: Start tunnel in this window
-node tunnel.js
+echo [2/2] Starting tunnel...
+C:\Users\jeffb\cloudflared.exe tunnel --config cloudflared.yml run cloudpipe
 
 pause

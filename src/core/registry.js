@@ -11,6 +11,7 @@ class ServiceRegistry {
     this.services = [];
     this.servers = [];
     this.config = null;
+    this.servicesDir = null;
   }
 
   /**
@@ -22,73 +23,23 @@ class ServiceRegistry {
   }
 
   /**
-   * 掃描並註冊排程器服務
-   * schedulers/ 目錄下的 .js 檔案
+   * 掃描 services/ 目錄
+   * 載入所有 .js 檔案（底線開頭的除外）
    */
-  scanSchedulers(dir) {
-    if (!fs.existsSync(dir)) return;
+  scanServices(dir) {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
 
-    const files = fs.readdirSync(dir).filter(f => f.endsWith('.js'));
-    files.forEach(file => {
-      this.services.push({
-        name: path.basename(file, '.js'),
-        entry: path.join(dir, file),
-        port: this.config.port,
-        subdomain: this.config.subdomain,
-        type: 'scheduler'
-      });
-    });
-  }
+    this.servicesDir = dir;
 
-  /**
-   * 掃描並註冊獨立服務
-   * standalone/{name}/index.js
-   */
-  scanStandalone(dir) {
-    if (!fs.existsSync(dir)) return;
-
-    const dirs = fs.readdirSync(dir).filter(d => {
-      const fullPath = path.join(dir, d);
-      return fs.statSync(fullPath).isDirectory();
-    });
-
-    dirs.forEach(d => {
-      const indexPath = path.join(dir, d, 'index.js');
-      const configPath = path.join(dir, d, 'config.json');
-
-      if (fs.existsSync(indexPath)) {
-        // 讀取服務自己的 config（如果有）
-        let serviceConfig = {};
-        if (fs.existsSync(configPath)) {
-          serviceConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        }
-
-        this.services.push({
-          name: d,
-          entry: indexPath,
-          port: serviceConfig.port || this.config.port + this.services.length,
-          subdomain: serviceConfig.subdomain || d,
-          type: 'standalone',
-          config: serviceConfig
-        });
-      }
-    });
-  }
-
-  /**
-   * 從 config.json 的 standalone 陣列註冊
-   */
-  loadStandaloneFromConfig(baseDir) {
-    if (!this.config.standalone || this.config.standalone.length === 0) return;
-
-    this.config.standalone.forEach(s => {
-      this.services.push({
-        name: s.name,
-        entry: path.join(baseDir, s.entry),
-        port: s.port,
-        subdomain: s.subdomain,
-        type: 'standalone'
-      });
+    // 使用 router.js 作為主入口
+    this.services.push({
+      name: this.config.subdomain || 'api',
+      entry: path.join(__dirname, 'router.js'),
+      port: this.config.port,
+      subdomain: this.config.subdomain,
+      servicesDir: dir
     });
   }
 

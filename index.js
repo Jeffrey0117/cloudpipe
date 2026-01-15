@@ -3,4 +3,4 @@
  * 執行：node index.js
  */
 
-require('./src/services/server');
+require('./src/core/server');

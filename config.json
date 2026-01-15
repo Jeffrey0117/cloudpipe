@@ -1,7 +1,5 @@
 {
   "domain": "isnowfriend.com",
   "port": 8787,
-  "subdomain": "api",
-  "cloudflared_path": "%LOCALAPPDATA%\\Microsoft\\WinGet\\Packages\\Cloudflare.cloudflared_Microsoft.Winget.Source_8wekyb3d8bbwe\\cloudflared.exe",
-  "standalone": []
+  "subdomain": "api"
 }
