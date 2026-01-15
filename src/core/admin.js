@@ -113,10 +113,22 @@ function uploadService(req, res) {
       return res.end(JSON.stringify({ error: '只接受 .js 檔案' }));
     }
 
-    const name = path.basename(file.filename, '.js');
-    const destPath = path.join(SERVICES_DIR, file.filename);
+    // 使用用戶給的名稱
+    const name = fields.name;
+    if (!name || !/^[a-z0-9-]+$/.test(name)) {
+      res.writeHead(400, { 'content-type': 'application/json' });
+      return res.end(JSON.stringify({ error: '無效的名稱' }));
+    }
+
+    // 檢查是否已存在
+    const destPath = path.join(SERVICES_DIR, `${name}.js`);
+    if (fs.existsSync(destPath)) {
+      res.writeHead(400, { 'content-type': 'application/json' });
+      return res.end(JSON.stringify({ error: '名稱已被使用' }));
+    }
 
     fs.writeFileSync(destPath, file.data);
+    console.log(`[admin] 服務已建立: ${name}`);
 
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({
@@ -143,10 +155,14 @@ function uploadApp(req, res) {
 
     const appDir = path.join(APPS_DIR, name);
 
-    // 建立目錄
-    if (!fs.existsSync(appDir)) {
-      fs.mkdirSync(appDir, { recursive: true });
+    // 檢查是否已存在
+    if (fs.existsSync(appDir)) {
+      res.writeHead(400, { 'content-type': 'application/json' });
+      return res.end(JSON.stringify({ error: '名稱已被使用' }));
     }
+
+    // 建立目錄
+    fs.mkdirSync(appDir, { recursive: true });
 
     // 儲存 zip
     const zipPath = path.join(appDir, 'upload.zip');

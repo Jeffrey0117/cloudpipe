@@ -7,11 +7,18 @@ const $$ = (sel) => document.querySelectorAll(sel);
 
 // 狀態
 let currentType = null; // 'service' | 'app'
+let existingServices = []; // 已存在的服務名稱
+let existingApps = []; // 已存在的 app 名稱
 
 // DOM 元素
 const uploadZone = $('#uploadZone');
 const uploadTitle = $('#uploadTitle');
-const subdomainInput = $('#subdomainInput');
+const guideText = $('#guideText');
+const nameInput = $('#nameInput');
+const nameLabel = $('#nameLabel');
+const serviceName = $('#serviceName');
+const nameSuffix = $('#nameSuffix');
+const nameHint = $('#nameHint');
 const dropzone = $('#dropzone');
 const fileInput = $('#fileInput');
 const uploadHint = $('#uploadHint');
@@ -51,17 +58,36 @@ function showUpload(type) {
   uploadZone.classList.remove('hidden');
   uploadStatus.classList.add('hidden');
   dropzone.style.display = 'block';
-  
+  serviceName.value = '';
+
   if (type === 'service') {
     uploadTitle.textContent = '上傳 API 服務';
-    subdomainInput.classList.add('hidden');
+    nameLabel.textContent = 'API 名稱';
+    nameSuffix.textContent = '';
+    serviceName.placeholder = 'ytdownload';
     uploadHint.textContent = '或點擊選擇 .js 檔案';
     fileInput.accept = '.js';
+    guideText.innerHTML = '檔名 <code>xxx.js</code> 會依你的命名存成 → <code>epi.isnowfriend.com/你的名稱</code>';
+    updateNameHint('service');
   } else {
     uploadTitle.textContent = '部署專案';
-    subdomainInput.classList.remove('hidden');
+    nameLabel.textContent = '子域名';
+    nameSuffix.textContent = '.isnowfriend.com';
+    serviceName.placeholder = 'blog';
     uploadHint.textContent = '或點擊選擇 .zip 檔案';
     fileInput.accept = '.zip';
+    guideText.innerHTML = '上傳後可透過 <code>你的名稱.isnowfriend.com</code> 存取';
+    updateNameHint('app');
+  }
+}
+
+// 更新名稱提示（顯示已佔用）
+function updateNameHint(type) {
+  const existing = type === 'service' ? existingServices : existingApps;
+  if (existing.length > 0) {
+    nameHint.textContent = '已使用: ' + existing.join(', ');
+  } else {
+    nameHint.textContent = '';
   }
 }
 
@@ -105,7 +131,7 @@ function initUpload() {
 
 // 處理上傳
 async function handleUpload(file) {
-  // 驗證
+  // 驗證檔案類型
   if (currentType === 'service' && !file.name.endsWith('.js')) {
     alert('請上傳 .js 檔案');
     return;
@@ -114,44 +140,47 @@ async function handleUpload(file) {
     alert('請上傳 .zip 檔案');
     return;
   }
-  
-  // 專案需要子域名
-  let subdomain = null;
-  if (currentType === 'app') {
-    subdomain = $('#subdomain').value.trim();
-    if (!subdomain) {
-      alert('請輸入子域名');
-      return;
-    }
-    if (!/^[a-z0-9-]+$/.test(subdomain)) {
-      alert('子域名只能包含小寫字母、數字和連字符');
-      return;
-    }
+
+  // 取得名稱
+  const name = serviceName.value.trim();
+  if (!name) {
+    alert('請輸入名稱');
+    return;
   }
-  
+  if (!/^[a-z0-9-]+$/.test(name)) {
+    alert('名稱只能包含小寫字母、數字和連字符');
+    return;
+  }
+
+  // 檢查衝突
+  const existing = currentType === 'service' ? existingServices : existingApps;
+  if (existing.includes(name)) {
+    alert(`名稱 "${name}" 已被使用，請換一個`);
+    return;
+  }
+
   // 顯示上傳中
   dropzone.style.display = 'none';
+  nameInput.style.display = 'none';
   uploadStatus.classList.remove('hidden', 'success', 'error');
   statusText.textContent = '上傳中...';
-  
+
   try {
     const formData = new FormData();
     formData.append('file', file);
-    if (subdomain) {
-      formData.append('name', subdomain);
-    }
-    
-    const endpoint = currentType === 'service' 
+    formData.append('name', name);
+
+    const endpoint = currentType === 'service'
       ? '/api/_admin/upload/service'
       : '/api/_admin/upload/app';
-    
+
     const res = await fetch(endpoint, {
       method: 'POST',
       body: formData
     });
-    
+
     const data = await res.json();
-    
+
     if (data.success) {
       uploadStatus.classList.add('success');
       statusText.innerHTML = `部署成功！<br><a href="${data.url}" target="_blank">${data.url}</a>`;
@@ -170,12 +199,16 @@ async function loadDeployed() {
   try {
     const res = await fetch('/api/_admin/services');
     const data = await res.json();
-    
+
+    // 記錄已存在的名稱
+    existingServices = data.services.map(s => s.name);
+    existingApps = data.apps.map(a => a.name);
+
     if (data.services.length === 0 && data.apps.length === 0) {
       deployedList.innerHTML = '<div class="empty">尚無部署的服務</div>';
       return;
     }
-    
+
     let html = '';
     
     // Services

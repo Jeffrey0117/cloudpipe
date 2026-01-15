@@ -37,14 +37,20 @@
           <span id="uploadTitle">上傳</span>
           <button class="close-btn" id="closeUpload">&times;</button>
         </div>
-        
-        <!-- 子域名輸入（專案部署用） -->
-        <div class="subdomain-input hidden" id="subdomainInput">
-          <label>子域名</label>
+
+        <!-- 指引 -->
+        <div class="guide" id="uploadGuide">
+          <p id="guideText"></p>
+        </div>
+
+        <!-- 名稱輸入 -->
+        <div class="name-input" id="nameInput">
+          <label id="nameLabel">名稱</label>
           <div class="input-preview">
-            <input type="text" id="subdomain" placeholder="blog">
-            <span>.isnowfriend.com</span>
+            <input type="text" id="serviceName" placeholder="my-api">
+            <span id="nameSuffix">.isnowfriend.com</span>
           </div>
+          <p class="name-hint" id="nameHint"></p>
         </div>
 
         <div class="dropzone" id="dropzone">
