@@ -3,11 +3,11 @@
   "cloudflared_path": "%LOCALAPPDATA%\\Microsoft\\WinGet\\Packages\\Cloudflare.cloudflared_Microsoft.Winget.Source_8wekyb3d8bbwe\\cloudflared.exe",
   "services": [
     {
-      "name": "example-proxy",
-      "enabled": false,
+      "name": "railway-proxy",
+      "enabled": true,
       "type": "proxy",
-      "target": "https://api.example.com",
-      "subdomain": "example",
+      "target": "https://api-production-1ea7.up.railway.app",
+      "subdomain": "api",
       "port": 8787
     },
     {
