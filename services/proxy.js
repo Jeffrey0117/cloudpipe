@@ -13,21 +13,32 @@ module.exports = {
     return req.url.startsWith('/api');
   },
 
-  // 轉發請求
+  // 轉發請求（保留 /api 前綴）
   handle(req, res) {
     const targetUrl = new URL(req.url, TARGET);
 
-    console.log(`[proxy] -> ${targetUrl.href}`);
+    console.log(`[proxy] ${req.url} -> ${targetUrl.href}`);
+
+    // 只保留必要 headers
+    const headers = {
+      'host': targetUrl.hostname,
+      'content-type': req.headers['content-type'] || 'application/json',
+      'accept': 'application/json'
+    };
+    if (req.headers['authorization']) {
+      headers['authorization'] = req.headers['authorization'];
+    }
+    if (req.headers['content-length']) {
+      headers['content-length'] = req.headers['content-length'];
+    }
 
     const options = {
       hostname: targetUrl.hostname,
       port: 443,
       path: targetUrl.pathname + targetUrl.search,
       method: req.method,
-      headers: { ...req.headers, host: targetUrl.hostname }
+      headers
     };
-
-    delete options.headers['connection'];
 
     const proxyReq = https.request(options, (proxyRes) => {
       const headers = { ...proxyRes.headers };

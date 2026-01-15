@@ -4,89 +4,78 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CloudPipe</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #0a0a0a;
-      color: #e0e0e0;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .container {
-      max-width: 600px;
-      padding: 2rem;
-    }
-    h1 {
-      font-size: 2.5rem;
-      font-weight: 300;
-      margin-bottom: 0.5rem;
-      color: #fff;
-    }
-    .subtitle {
-      color: #888;
-      margin-bottom: 2rem;
-    }
-    .feature {
-      background: #151515;
-      border: 1px solid #252525;
-      border-radius: 8px;
-      padding: 1rem;
-      margin-bottom: 1rem;
-    }
-    .feature h3 {
-      color: #4ade80;
-      font-size: 0.9rem;
-      margin-bottom: 0.5rem;
-    }
-    .feature p {
-      color: #888;
-      font-size: 0.85rem;
-    }
-    code {
-      background: #252525;
-      padding: 0.2rem 0.4rem;
-      border-radius: 4px;
-      font-family: 'SF Mono', Monaco, monospace;
-      font-size: 0.8rem;
-    }
-    .status {
-      margin-top: 2rem;
-      padding-top: 1rem;
-      border-top: 1px solid #252525;
-      color: #666;
-      font-size: 0.8rem;
-    }
-    .status span {
-      color: #4ade80;
-    }
-  </style>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div class="container">
-    <h1>CloudPipe</h1>
-    <p class="subtitle">Local Deploy Gateway</p>
+    <header>
+      <h1>CloudPipe</h1>
+      <p class="subtitle">Personal Deploy Platform</p>
+    </header>
 
-    <div class="feature">
-      <h3>Path-based</h3>
-      <p><code>api.isnowfriend.com/service</code> routes to local services</p>
-    </div>
+    <main>
+      <!-- 兩個主要入口 -->
+      <section class="cards">
+        <div class="card" data-type="service">
+          <div class="card-icon">📡</div>
+          <h2>API 服務</h2>
+          <p>路徑式部署</p>
+          <code>epi.isnowfriend.com/xxx</code>
+        </div>
 
-    <div class="feature">
-      <h3>Subdomain-based</h3>
-      <p><code>service.isnowfriend.com</code> routes to local services</p>
-    </div>
+        <div class="card" data-type="app">
+          <div class="card-icon">🌐</div>
+          <h2>專案部署</h2>
+          <p>子域名式</p>
+          <code>xxx.isnowfriend.com</code>
+        </div>
+      </section>
 
-    <div class="feature">
-      <h3>Hot Reload</h3>
-      <p>Drop <code>.js</code> files in <code>services/</code> to deploy</p>
-    </div>
+      <!-- 上傳區（預設隱藏） -->
+      <section class="upload-zone hidden" id="uploadZone">
+        <div class="upload-header">
+          <span id="uploadTitle">上傳</span>
+          <button class="close-btn" id="closeUpload">&times;</button>
+        </div>
+        
+        <!-- 子域名輸入（專案部署用） -->
+        <div class="subdomain-input hidden" id="subdomainInput">
+          <label>子域名</label>
+          <div class="input-preview">
+            <input type="text" id="subdomain" placeholder="blog">
+            <span>.isnowfriend.com</span>
+          </div>
+        </div>
 
-    <div class="status">
-      Status: <span>Running</span>
-    </div>
+        <div class="dropzone" id="dropzone">
+          <div class="dropzone-content">
+            <div class="dropzone-icon">📁</div>
+            <p>拖拽檔案到這裡</p>
+            <p class="hint" id="uploadHint">或點擊選擇 .js 檔案</p>
+            <input type="file" id="fileInput" hidden>
+          </div>
+        </div>
+
+        <div class="upload-status hidden" id="uploadStatus">
+          <div class="status-icon">⏳</div>
+          <p id="statusText">上傳中...</p>
+        </div>
+      </section>
+
+      <!-- 已部署列表 -->
+      <section class="deployed">
+        <h3>已部署</h3>
+        <div class="deployed-list" id="deployedList">
+          <div class="loading">載入中...</div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>CloudPipe v1.0</p>
+    </footer>
   </div>
+
+  <script src="app.js"></script>
 </body>
 </html>

@@ -6,6 +6,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const admin = require('./admin');
 
 module.exports = function(config) {
   const routes = [];
@@ -41,13 +42,33 @@ module.exports = function(config) {
 
     console.log(`[${config.name}] ${req.method} ${req.url}`);
 
-    // 首頁 - 顯示 index.html
-    if (req.url === '/') {
-      const htmlPath = path.join(dir, '..', 'public', 'index.html');
-      if (fs.existsSync(htmlPath)) {
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-        return res.end(fs.readFileSync(htmlPath));
-      }
+    // 靜態檔案 MIME types
+    const mimeTypes = {
+      '.html': 'text/html; charset=utf-8',
+      '.css': 'text/css; charset=utf-8',
+      '.js': 'application/javascript; charset=utf-8',
+      '.json': 'application/json',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.svg': 'image/svg+xml',
+      '.ico': 'image/x-icon'
+    };
+
+    // 靜態檔案服務 (public/)
+    const publicDir = path.join(dir, '..', 'public');
+    const urlPath = req.url.split('?')[0];
+    const staticFile = urlPath === '/' ? '/index.html' : urlPath;
+    const filePath = path.join(publicDir, staticFile);
+    const ext = path.extname(filePath);
+
+    if (ext && mimeTypes[ext] && fs.existsSync(filePath)) {
+      res.writeHead(200, { 'content-type': mimeTypes[ext] });
+      return res.end(fs.readFileSync(filePath));
+    }
+
+    // Admin API
+    if (admin.match(req)) {
+      return admin.handle(req, res);
     }
 
     // Health check API

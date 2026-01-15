@@ -2,7 +2,7 @@ tunnel: afd11345-c75a-4d62-aa67-0a389d82ce74
 credentials-file: C:\Users\jeffb\.cloudflared\afd11345-c75a-4d62-aa67-0a389d82ce74.json
 
 ingress:
-  - hostname: api.isnowfriend.com
+  - hostname: epi.isnowfriend.com
     service: http://localhost:8787
   - hostname: "*.isnowfriend.com"
     service: http://localhost:8787
