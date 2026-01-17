@@ -26,8 +26,10 @@ const { pipeline } = require('stream/promises');
 let lurlRetry = null;
 try {
   lurlRetry = require('./lurl-retry');
+  console.log('[lurl] ✅ 備援下載模組已載入');
 } catch (e) {
-  console.log('[lurl] 備援下載模組未載入 (需要 npm install puppeteer)');
+  console.log('[lurl] ⚠️ 備援下載模組未載入:', e.message);
+  console.log('[lurl] 請執行 npm install puppeteer 來啟用重試功能');
 }
 
 // ==================== 安全配置 ====================
