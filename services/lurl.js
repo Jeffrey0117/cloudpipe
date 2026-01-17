@@ -22,15 +22,6 @@ const path = require('path');
 const crypto = require('crypto');
 const { pipeline } = require('stream/promises');
 
-// 備援下載模組 (Puppeteer)
-let lurlRetry = null;
-try {
-  lurlRetry = require('./lurl-retry');
-  console.log('[lurl] ✅ 備援下載模組已載入');
-} catch (e) {
-  console.log('[lurl] ⚠️ 備援下載模組未載入:', e.message);
-  console.log('[lurl] 請執行 npm install puppeteer 來啟用重試功能');
-}
 
 // ==================== 安全配置 ====================
 // 從環境變數讀取，請在 .env 檔案中設定
@@ -560,11 +551,7 @@ function adminPage() {
         const statusEl = document.getElementById('retryStatus');
         const btn = document.getElementById('retryBtn');
         if (data.ok) {
-          if (!data.puppeteerAvailable) {
-            statusEl.textContent = '⚠️ Puppeteer 未安裝';
-            btn.disabled = true;
-            btn.style.opacity = '0.5';
-          } else if (data.failed === 0) {
+          if (data.failed === 0) {
             statusEl.textContent = '✅ 沒有失敗記錄';
             btn.disabled = true;
             btn.style.opacity = '0.5';
@@ -1494,12 +1481,6 @@ module.exports = {
         return;
       }
 
-      if (!lurlRetry) {
-        res.writeHead(500, corsHeaders());
-        res.end(JSON.stringify({ ok: false, error: '備援下載模組未安裝，請執行 npm install puppeteer' }));
-        return;
-      }
-
       try {
         const records = readAllRecords();
         // 找出下載失敗的記錄 (fileExists === false 或檔案不存在)
@@ -1525,25 +1506,55 @@ module.exports = {
           message: `開始重試 ${failedRecords.length} 個失敗記錄，處理中...`
         }));
 
-        // 背景執行重試
+        // 背景執行重試 - 直接用已存的 fileUrl 重新下載
         (async () => {
-          const results = await lurlRetry.batchRetry(failedRecords, DATA_DIR, (current, total, record, result) => {
-            console.log(`[lurl] 重試進度: ${current}/${total} - ${record.id} - ${result.success ? '成功' : '失敗'}`);
-          });
+          let successCount = 0;
+          const successIds = [];
+
+          for (let i = 0; i < failedRecords.length; i++) {
+            const record = failedRecords[i];
+            console.log(`[lurl] 重試 ${i + 1}/${failedRecords.length}: ${record.id} - ${record.fileUrl.substring(0, 60)}...`);
+
+            try {
+              const destPath = path.join(DATA_DIR, record.backupPath);
+              // 確保目錄存在
+              const dir = path.dirname(destPath);
+              if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true });
+              }
+
+              // 用已存的 fileUrl 直接下載
+              const success = await downloadFile(record.fileUrl, destPath, record.pageUrl);
+
+              if (success) {
+                successCount++;
+                successIds.push(record.id);
+                console.log(`[lurl] ✅ 重試成功: ${record.id}`);
+              } else {
+                console.log(`[lurl] ❌ 重試失敗: ${record.id}`);
+              }
+            } catch (err) {
+              console.log(`[lurl] ❌ 重試錯誤: ${record.id} - ${err.message}`);
+            }
+
+            // 避免太快，間隔 500ms
+            if (i < failedRecords.length - 1) {
+              await new Promise(r => setTimeout(r, 500));
+            }
+          }
 
           // 更新記錄的 fileExists 狀態
-          if (results.success > 0) {
+          if (successCount > 0) {
             const lines = fs.readFileSync(RECORDS_FILE, 'utf8').split('\n').filter(l => l.trim());
-            const successIds = results.details.filter(d => d.success).map(d => d.id);
             const newLines = lines.map(line => {
               try {
-                const record = JSON.parse(line);
-                if (successIds.includes(record.id)) {
-                  record.fileExists = true;
-                  record.retrySuccess = true;
-                  record.retriedAt = new Date().toISOString();
+                const rec = JSON.parse(line);
+                if (successIds.includes(rec.id)) {
+                  rec.fileExists = true;
+                  rec.retrySuccess = true;
+                  rec.retriedAt = new Date().toISOString();
                 }
-                return JSON.stringify(record);
+                return JSON.stringify(rec);
               } catch (e) {
                 return line;
               }
@@ -1551,7 +1562,7 @@ module.exports = {
             fs.writeFileSync(RECORDS_FILE, newLines.join('\n') + '\n');
           }
 
-          console.log(`[lurl] 重試完成: 成功 ${results.success}/${results.total}`);
+          console.log(`[lurl] 重試完成: 成功 ${successCount}/${failedRecords.length}`);
         })().catch(err => {
           console.error('[lurl] 重試過程發生錯誤:', err);
         });
@@ -1580,8 +1591,7 @@ module.exports = {
       res.writeHead(200, corsHeaders());
       res.end(JSON.stringify({
         ok: true,
-        failed: failedRecords.length,
-        puppeteerAvailable: !!lurlRetry
+        failed: failedRecords.length
       }));
       return;
     }
