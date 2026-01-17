@@ -1,6 +1,10 @@
 node_modules/
+package-lock.json
 tunnels/*.yml
 *.log
+nul
 
 _gemini_output.txt
 data/
+services/.env
+.env
