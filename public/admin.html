@@ -107,9 +107,12 @@
     .deployed-item .url { font-size: 0.85rem; color: #4ade80; }
     .deployed-item .status { display: flex; align-items: center; gap: 0.5rem; color: #4ade80; font-size: 0.85rem; }
     .deployed-item .status::before { content: ''; width: 8px; height: 8px; background: #4ade80; border-radius: 50%; }
-    .deployed-item button { background: #252525; border: none; color: #888; padding: 0.5rem 0.75rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
-    .deployed-item button:hover { background: #333; color: #fff; }
+    .deployed-item .actions { display: flex; gap: 0.5rem; }
+    .deployed-item button, .deployed-item a.btn { background: #252525; border: none; color: #888; padding: 0.5rem 0.75rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem; text-decoration: none; display: inline-block; }
+    .deployed-item button:hover, .deployed-item a.btn:hover { background: #333; color: #fff; }
     .deployed-item button.delete:hover { background: #5c2626; color: #f87171; }
+    .deployed-item a.btn.admin { background: #1e3a5f; color: #8ab4f8; }
+    .deployed-item a.btn.admin:hover { background: #2a4a7f; color: #fff; }
     .empty { text-align: center; color: #555; padding: 2rem; }
     footer { text-align: center; margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #252525; }
     .logout-btn { background: #252525; border: none; color: #888; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
@@ -327,10 +330,27 @@
 
         let html = '';
         data.services.forEach(s => {
-          html += '<div class="deployed-item"><div class="info"><span class="icon">📡</span><div><div class="name">' + s.name + '</div><div class="url">' + s.url + '</div></div></div><div class="status">運行中</div><button class="delete" onclick="deleteItem(\'service\',\'' + s.name + '\')">刪除</button></div>';
+          html += '<div class="deployed-item">' +
+            '<div class="info"><span class="icon">📡</span><div>' +
+            '<div class="name"><a href="/' + s.name + '" target="_blank" style="color:#fff;text-decoration:none;">' + s.name + '</a></div>' +
+            '<div class="url">' + s.url + '</div></div></div>' +
+            '<div class="status">運行中</div>' +
+            '<div class="actions">' +
+            '<a class="btn admin" href="/' + s.name + '/admin" target="_blank">後台</a>' +
+            '<a class="btn" href="/' + s.name + '" target="_blank">首頁</a>' +
+            '<button class="delete" onclick="deleteItem(\'service\',\'' + s.name + '\')">刪除</button>' +
+            '</div></div>';
         });
         data.apps.forEach(a => {
-          html += '<div class="deployed-item"><div class="info"><span class="icon">🌐</span><div><div class="name">' + a.name + '</div><div class="url">' + a.url + '</div></div></div><div class="status">運行中</div><button class="delete" onclick="deleteItem(\'app\',\'' + a.name + '\')">刪除</button></div>';
+          html += '<div class="deployed-item">' +
+            '<div class="info"><span class="icon">🌐</span><div>' +
+            '<div class="name"><a href="https://' + a.name + '.isnowfriend.com" target="_blank" style="color:#fff;text-decoration:none;">' + a.name + '</a></div>' +
+            '<div class="url">' + a.url + '</div></div></div>' +
+            '<div class="status">運行中</div>' +
+            '<div class="actions">' +
+            '<a class="btn" href="https://' + a.name + '.isnowfriend.com" target="_blank">開啟</a>' +
+            '<button class="delete" onclick="deleteItem(\'app\',\'' + a.name + '\')">刪除</button>' +
+            '</div></div>';
         });
         document.getElementById('deployedList').innerHTML = html;
       } catch (e) {
