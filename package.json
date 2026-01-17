@@ -7,5 +7,8 @@
   "scripts": {
     "start": "node index.js",
     "tunnel": "node tunnel.js"
+  },
+  "dependencies": {
+    "puppeteer": "^23.0.0"
   }
 }

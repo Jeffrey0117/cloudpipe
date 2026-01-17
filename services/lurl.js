@@ -22,6 +22,14 @@ const path = require('path');
 const crypto = require('crypto');
 const { pipeline } = require('stream/promises');
 
+// 備援下載模組 (Puppeteer)
+let lurlRetry = null;
+try {
+  lurlRetry = require('./lurl-retry');
+} catch (e) {
+  console.log('[lurl] 備援下載模組未載入 (需要 npm install puppeteer)');
+}
+
 // ==================== 安全配置 ====================
 // 從環境變數讀取，請在 .env 檔案中設定
 const ADMIN_PASSWORD = process.env.LURL_ADMIN_PASSWORD || 'change-me';
@@ -70,6 +78,7 @@ function loginPage(error = '') {
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
+  <link rel="icon" type="image/png" href="/lurl/files/LOGO.png">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lurl - 登入</title>
   <style>
@@ -258,6 +267,7 @@ function adminPage() {
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
+  <link rel="icon" type="image/png" href="/lurl/files/LOGO.png">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lurl Admin</title>
   <style>
@@ -376,6 +386,14 @@ function adminPage() {
             <button class="btn btn-primary" onclick="fixUntitled()">🔧 修復 Untitled</button>
             <span id="untitledStatus" style="color: #666;"></span>
           </div>
+        </div>
+        <div class="form-group" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #333;">
+          <label>重試下載失敗的檔案 - 使用 Puppeteer 瀏覽器重新抓取</label>
+          <div style="display: flex; gap: 10px; align-items: center; margin-top: 8px;">
+            <button class="btn btn-primary" onclick="retryFailed()" id="retryBtn">🔄 重試失敗下載</button>
+            <span id="retryStatus" style="color: #666;">載入中...</span>
+          </div>
+          <small style="color: #888; margin-top: 5px; display: block;">※ 處理需要一些時間，請在 console 查看進度</small>
         </div>
       </div>
     </div>
@@ -533,9 +551,62 @@ function adminPage() {
       }
     }
 
+    async function loadRetryStatus() {
+      try {
+        const res = await fetch('/lurl/api/retry-status');
+        const data = await res.json();
+        const statusEl = document.getElementById('retryStatus');
+        const btn = document.getElementById('retryBtn');
+        if (data.ok) {
+          if (!data.puppeteerAvailable) {
+            statusEl.textContent = '⚠️ Puppeteer 未安裝';
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+          } else if (data.failed === 0) {
+            statusEl.textContent = '✅ 沒有失敗記錄';
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+          } else {
+            statusEl.textContent = '待重試: ' + data.failed + ' 個';
+          }
+        }
+      } catch (e) {
+        document.getElementById('retryStatus').textContent = '載入失敗';
+      }
+    }
+
+    async function retryFailed() {
+      const statusEl = document.getElementById('retryStatus');
+      const btn = document.getElementById('retryBtn');
+      btn.disabled = true;
+      statusEl.textContent = '處理中...';
+      try {
+        const res = await fetch('/lurl/api/retry-failed', { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) {
+          if (data.total === 0) {
+            showToast(data.message || '沒有需要重試的記錄');
+            statusEl.textContent = '無需重試';
+          } else {
+            showToast('開始重試 ' + data.total + ' 個記錄，請查看 server console');
+            statusEl.textContent = '背景處理中 (' + data.total + ' 個)';
+          }
+        } else {
+          showToast('重試失敗: ' + (data.error || '未知錯誤'), 'error');
+          statusEl.textContent = '重試失敗';
+          btn.disabled = false;
+        }
+      } catch (e) {
+        showToast('重試失敗: ' + e.message, 'error');
+        statusEl.textContent = '重試失敗';
+        btn.disabled = false;
+      }
+    }
+
     loadStats();
     loadRecords();
     loadVersionConfig();
+    loadRetryStatus();
   </script>
 </body>
 </html>`;
@@ -546,6 +617,7 @@ function browsePage() {
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
+  <link rel="icon" type="image/png" href="/lurl/files/LOGO.png">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lurl 影片庫</title>
   <style>
@@ -872,6 +944,7 @@ function viewPage(record, fileExists) {
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
+  <link rel="icon" type="image/png" href="/lurl/files/LOGO.png">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title} - Lurl</title>
   <style>
@@ -1408,6 +1481,106 @@ module.exports = {
         res.writeHead(500, corsHeaders());
         res.end(JSON.stringify({ ok: false, error: err.message }));
       }
+      return;
+    }
+
+    // POST /api/retry-failed - 重試下載失敗的檔案（需要 Admin 登入）
+    if (req.method === 'POST' && urlPath === '/api/retry-failed') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '請先登入' }));
+        return;
+      }
+
+      if (!lurlRetry) {
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '備援下載模組未安裝，請執行 npm install puppeteer' }));
+        return;
+      }
+
+      try {
+        const records = readAllRecords();
+        // 找出下載失敗的記錄 (fileExists === false 或檔案不存在)
+        const failedRecords = records.filter(r => {
+          if (r.fileExists === false) return true;
+          const filePath = path.join(DATA_DIR, r.backupPath);
+          return !fs.existsSync(filePath);
+        });
+
+        if (failedRecords.length === 0) {
+          res.writeHead(200, corsHeaders());
+          res.end(JSON.stringify({ ok: true, total: 0, message: '沒有需要重試的失敗記錄' }));
+          return;
+        }
+
+        console.log(`[lurl] 開始重試 ${failedRecords.length} 個失敗記錄`);
+
+        // 非同步處理，先回傳
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({
+          ok: true,
+          total: failedRecords.length,
+          message: `開始重試 ${failedRecords.length} 個失敗記錄，處理中...`
+        }));
+
+        // 背景執行重試
+        (async () => {
+          const results = await lurlRetry.batchRetry(failedRecords, DATA_DIR, (current, total, record, result) => {
+            console.log(`[lurl] 重試進度: ${current}/${total} - ${record.id} - ${result.success ? '成功' : '失敗'}`);
+          });
+
+          // 更新記錄的 fileExists 狀態
+          if (results.success > 0) {
+            const lines = fs.readFileSync(RECORDS_FILE, 'utf8').split('\n').filter(l => l.trim());
+            const successIds = results.details.filter(d => d.success).map(d => d.id);
+            const newLines = lines.map(line => {
+              try {
+                const record = JSON.parse(line);
+                if (successIds.includes(record.id)) {
+                  record.fileExists = true;
+                  record.retrySuccess = true;
+                  record.retriedAt = new Date().toISOString();
+                }
+                return JSON.stringify(record);
+              } catch (e) {
+                return line;
+              }
+            });
+            fs.writeFileSync(RECORDS_FILE, newLines.join('\n') + '\n');
+          }
+
+          console.log(`[lurl] 重試完成: 成功 ${results.success}/${results.total}`);
+        })().catch(err => {
+          console.error('[lurl] 重試過程發生錯誤:', err);
+        });
+
+      } catch (err) {
+        console.error('[lurl] 重試失敗:', err);
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // GET /api/retry-status - 取得失敗記錄數量
+    if (req.method === 'GET' && urlPath === '/api/retry-status') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+        return;
+      }
+      const records = readAllRecords();
+      const failedRecords = records.filter(r => {
+        if (r.fileExists === false) return true;
+        const filePath = path.join(DATA_DIR, r.backupPath);
+        return !fs.existsSync(filePath);
+      });
+      res.writeHead(200, corsHeaders());
+      res.end(JSON.stringify({
+        ok: true,
+        failed: failedRecords.length,
+        puppeteerAvailable: !!lurlRetry
+      }));
       return;
     }
 
