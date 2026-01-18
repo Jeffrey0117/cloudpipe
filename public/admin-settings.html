@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>管理 - CloudPipe</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    .hidden { display: none !important; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0a;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+
+    /* Top Bar */
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-bottom: 1px solid #252525;
+      background: #0a0a0a;
+    }
+    .topbar a { color: #888; text-decoration: none; font-size: 14px; }
+    .topbar a:hover { color: #fff; }
+    .topbar .sep { color: #333; }
+    .topbar .current { color: #fff; }
+    .back-btn {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      color: #888;
+      text-decoration: none;
+      margin-right: 8px;
+    }
+    .back-btn:hover { color: #fff; }
+
+    .container { max-width: 900px; margin: 0 auto; padding: 2rem; }
+
+    .page-title {
+      font-size: 1.75rem;
+      font-weight: 400;
+      color: #fff;
+      margin-bottom: 2rem;
+    }
+
+    /* Section Title */
+    .section-title {
+      color: #888;
+      font-size: 0.85rem;
+      font-weight: 400;
+      margin-bottom: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Services Section */
+    .services-section { margin-bottom: 2.5rem; }
+    .services-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }
+    .service-card {
+      background: #151515;
+      border: 1px solid #252525;
+      border-radius: 12px;
+      padding: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .service-card:hover { border-color: #4ade80; transform: translateY(-2px); }
+    .service-icon { font-size: 2.5rem; flex-shrink: 0; }
+    .service-info { flex: 1; min-width: 0; }
+    .service-name { font-weight: 500; color: #fff; font-size: 1.1rem; margin-bottom: 2px; }
+    .service-desc { font-size: 0.85rem; color: #666; margin-bottom: 4px; }
+    .service-stats { font-size: 0.8rem; color: #4ade80; }
+    .service-status {
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      flex-shrink: 0;
+    }
+    .service-status.running { background: #14532d; color: #4ade80; }
+
+    /* System Info Section */
+    .system-info { margin-bottom: 2.5rem; }
+    .info-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+    .info-card {
+      background: #151515;
+      border: 1px solid #252525;
+      border-radius: 12px;
+      padding: 1.5rem;
+      text-align: center;
+    }
+    .info-label { font-size: 0.8rem; color: #666; margin-bottom: 0.5rem; }
+    .info-value { font-size: 1.75rem; font-weight: 500; color: #fff; }
+    .info-value.green { color: #4ade80; }
+
+    /* Deployed Section */
+    .deployed { margin-bottom: 2rem; }
+    .deployed-list { display: flex; flex-direction: column; gap: 0.5rem; }
+    .deployed-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #151515;
+      border: 1px solid #252525;
+      border-radius: 8px;
+      padding: 1rem;
+    }
+    .deployed-item .info { display: flex; align-items: center; gap: 1rem; }
+    .deployed-item .icon { font-size: 1.5rem; }
+    .deployed-item .name { font-weight: 500; color: #fff; }
+    .deployed-item .url { font-size: 0.85rem; color: #4ade80; }
+    .deployed-item .status { display: flex; align-items: center; gap: 0.5rem; color: #4ade80; font-size: 0.85rem; }
+    .deployed-item .status::before { content: ''; width: 8px; height: 8px; background: #4ade80; border-radius: 50%; }
+    .deployed-item .actions { display: flex; gap: 0.5rem; }
+    .deployed-item button, .deployed-item a.btn {
+      background: #252525;
+      border: none;
+      color: #888;
+      padding: 0.5rem 0.75rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .deployed-item button:hover, .deployed-item a.btn:hover { background: #333; color: #fff; }
+    .deployed-item button.delete:hover { background: #5c2626; color: #f87171; }
+    .deployed-item a.btn.admin { background: #1e3a5f; color: #8ab4f8; }
+    .deployed-item a.btn.admin:hover { background: #2a4a7f; color: #fff; }
+    .empty { text-align: center; color: #555; padding: 2rem; }
+
+    @media (max-width: 600px) {
+      .info-grid { grid-template-columns: 1fr; }
+      .services-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Top Bar -->
+  <div class="topbar">
+    <a href="/_admin" class="back-btn">← 返回</a>
+    <span class="sep">/</span>
+    <span class="current">管理</span>
+  </div>
+
+  <div class="container">
+    <h1 class="page-title">管理</h1>
+
+    <!-- 服務管理 -->
+    <section class="services-section">
+      <h3 class="section-title">服務管理</h3>
+      <div class="services-grid" id="servicesGrid">
+        <div class="service-card" onclick="window.location.href='/_admin/lurlhub'">
+          <div class="service-icon">🎬</div>
+          <div class="service-info">
+            <div class="service-name">LurlHub</div>
+            <div class="service-desc">影片/圖片備份服務</div>
+            <div class="service-stats" id="lurlStats">載入中...</div>
+          </div>
+          <div class="service-status running">運行中</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 系統資訊 -->
+    <section class="system-info">
+      <h3 class="section-title">系統資訊</h3>
+      <div class="info-grid">
+        <div class="info-card">
+          <div class="info-label">磁碟使用</div>
+          <div class="info-value" id="diskUsage">--</div>
+        </div>
+        <div class="info-card">
+          <div class="info-label">記錄總數</div>
+          <div class="info-value green" id="totalRecords">--</div>
+        </div>
+        <div class="info-card">
+          <div class="info-label">運行時間</div>
+          <div class="info-value" id="uptime">--</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 已部署 -->
+    <section class="deployed">
+      <h3 class="section-title">已部署</h3>
+      <div class="deployed-list" id="deployedList">
+        <div class="empty">載入中...</div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const authToken = localStorage.getItem('cloudpipe_token');
+    let uptimeSeconds = 0;
+
+    // 頁面載入
+    window.onload = function() {
+      if (!authToken) {
+        window.location.href = '/_admin';
+        return;
+      }
+      loadAll();
+    };
+
+    async function loadAll() {
+      await Promise.all([
+        loadLurlStats(),
+        loadSystemInfo(),
+        loadDeployed()
+      ]);
+    }
+
+    // 載入 LurlHub 統計
+    async function loadLurlStats() {
+      try {
+        const res = await fetch('/lurl/api/stats');
+        const data = await res.json();
+        if (data.totalRecords !== undefined) {
+          document.getElementById('lurlStats').textContent =
+            `${data.totalRecords} 筆記錄 · ${data.totalVideos || 0} 影片 · ${data.totalImages || 0} 圖片`;
+          document.getElementById('totalRecords').textContent = data.totalRecords;
+        }
+      } catch (e) {
+        document.getElementById('lurlStats').textContent = '無法載入';
+      }
+    }
+
+    // 載入系統資訊
+    async function loadSystemInfo() {
+      try {
+        const res = await fetch('/api/_admin/system', {
+          headers: { 'authorization': 'Bearer ' + authToken }
+        });
+        const data = await res.json();
+
+        if (data.disk) {
+          document.getElementById('diskUsage').textContent = data.disk.used;
+        }
+        if (data.uptime !== undefined) {
+          uptimeSeconds = Math.floor(data.uptime);
+          updateUptimeDisplay();
+          // 每秒自動增加
+          setInterval(() => {
+            uptimeSeconds++;
+            updateUptimeDisplay();
+          }, 1000);
+        }
+      } catch (e) {
+        console.error('載入系統資訊失敗', e);
+      }
+    }
+
+    function updateUptimeDisplay() {
+      document.getElementById('uptime').textContent = formatUptime(uptimeSeconds);
+    }
+
+    function formatUptime(seconds) {
+      if (seconds < 60) return seconds + ' 秒';
+      if (seconds < 3600) return Math.floor(seconds / 60) + ' 分 ' + (seconds % 60) + ' 秒';
+      if (seconds < 86400) {
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        return h + ' 時 ' + m + ' 分';
+      }
+      const d = Math.floor(seconds / 86400);
+      const h = Math.floor((seconds % 86400) / 3600);
+      return d + ' 天 ' + h + ' 時';
+    }
+
+    // 載入已部署
+    async function loadDeployed() {
+      try {
+        const res = await fetch('/api/_admin/services', {
+          headers: { 'authorization': 'Bearer ' + authToken }
+        });
+        const data = await res.json();
+
+        if (data.services.length === 0 && data.apps.length === 0) {
+          document.getElementById('deployedList').innerHTML = '<div class="empty">尚無部署</div>';
+          return;
+        }
+
+        let html = '';
+        data.services.forEach(s => {
+          html += `<div class="deployed-item">
+            <div class="info"><span class="icon">📡</span><div>
+              <div class="name"><a href="/${s.name}" target="_blank" style="color:#fff;text-decoration:none;">${s.name}</a></div>
+              <div class="url">${s.url}</div></div></div>
+            <div class="status">運行中</div>
+            <div class="actions">
+              <a class="btn admin" href="/${s.name}/admin" target="_blank">後台</a>
+              <a class="btn" href="/${s.name}" target="_blank">首頁</a>
+              <button class="delete" onclick="deleteItem('service','${s.name}')">刪除</button>
+            </div></div>`;
+        });
+        data.apps.forEach(a => {
+          html += `<div class="deployed-item">
+            <div class="info"><span class="icon">🌐</span><div>
+              <div class="name"><a href="https://${a.name}.isnowfriend.com" target="_blank" style="color:#fff;text-decoration:none;">${a.name}</a></div>
+              <div class="url">${a.url}</div></div></div>
+            <div class="status">運行中</div>
+            <div class="actions">
+              <a class="btn" href="https://${a.name}.isnowfriend.com" target="_blank">開啟</a>
+              <button class="delete" onclick="deleteItem('app','${a.name}')">刪除</button>
+            </div></div>`;
+        });
+        document.getElementById('deployedList').innerHTML = html;
+      } catch (e) {
+        document.getElementById('deployedList').innerHTML = '<div class="empty">載入失敗</div>';
+      }
+    }
+
+    // 刪除
+    async function deleteItem(type, name) {
+      if (!confirm('確定刪除 ' + name + '？')) return;
+      const endpoint = type === 'service' ? '/api/_admin/service/' + name : '/api/_admin/app/' + name;
+      await fetch(endpoint, { method: 'DELETE', headers: { 'authorization': 'Bearer ' + authToken } });
+      loadDeployed();
+    }
+  </script>
+</body>
+</html>

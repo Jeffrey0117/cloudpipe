@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LurlHub - CloudPipe</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0a;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+    .hidden { display: none !important; }
+
+    /* Top Bar */
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-bottom: 1px solid #252525;
+      background: #0a0a0a;
+    }
+    .topbar a { color: #888; text-decoration: none; font-size: 14px; }
+    .topbar a:hover { color: #fff; }
+    .topbar .sep { color: #333; }
+    .topbar .current { color: #fff; display: flex; align-items: center; gap: 8px; }
+    .topbar .icon { font-size: 1.2rem; }
+    .back-btn {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      color: #888;
+      text-decoration: none;
+      margin-right: 8px;
+    }
+    .back-btn:hover { color: #fff; }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 0;
+      padding: 0 24px;
+      border-bottom: 1px solid #252525;
+      background: #0a0a0a;
+    }
+    .tab {
+      padding: 14px 16px;
+      color: #888;
+      text-decoration: none;
+      font-size: 14px;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+    .tab:hover { color: #fff; }
+    .tab.active { color: #fff; border-bottom-color: #fff; }
+
+    /* Content */
+    .content { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+
+    /* Overview Tab */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .stat-card {
+      background: #151515;
+      border: 1px solid #252525;
+      border-radius: 12px;
+      padding: 24px;
+    }
+    .stat-label { font-size: 13px; color: #666; margin-bottom: 8px; }
+    .stat-value { font-size: 2rem; font-weight: 600; color: #fff; }
+    .stat-value.green { color: #4ade80; }
+
+    .section { margin-bottom: 32px; }
+    .section-title { font-size: 14px; color: #888; margin-bottom: 16px; text-transform: uppercase; }
+
+    .quick-links {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    .quick-link {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #151515;
+      border: 1px solid #252525;
+      border-radius: 8px;
+      padding: 16px;
+      text-decoration: none;
+      color: #fff;
+      transition: all 0.2s;
+    }
+    .quick-link:hover { border-color: #4ade80; background: #1a1a1a; }
+    .quick-link .icon { font-size: 1.5rem; }
+    .quick-link .text .title { font-weight: 500; margin-bottom: 2px; }
+    .quick-link .text .desc { font-size: 12px; color: #666; }
+
+    .endpoints {
+      background: #151515;
+      border: 1px solid #252525;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .endpoint-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      border-bottom: 1px solid #252525;
+    }
+    .endpoint-row:last-child { border-bottom: none; }
+    .endpoint-row .label { color: #888; font-size: 14px; }
+    .endpoint-row code {
+      background: #0a0a0a;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #4ade80;
+    }
+
+    /* Logs Tab */
+    .logs-container {
+      background: #151515;
+      border: 1px solid #252525;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .log-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 20px;
+      border-bottom: 1px solid #1a1a1a;
+      font-size: 13px;
+    }
+    .log-row:last-child { border-bottom: none; }
+    .log-time { color: #666; font-family: monospace; min-width: 140px; }
+    .log-type {
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      min-width: 60px;
+      text-align: center;
+    }
+    .log-type.upload { background: #14532d; color: #4ade80; }
+    .log-type.view { background: #1e3a5f; color: #8ab4f8; }
+    .log-type.error { background: #5c2626; color: #f87171; }
+    .log-type.retry { background: #4a4a00; color: #fbbf24; }
+    .log-message { color: #e0e0e0; flex: 1; }
+    .logs-empty { padding: 40px; text-align: center; color: #666; }
+    .log-row.new-log {
+      animation: highlight 2s ease-out;
+    }
+    @keyframes highlight {
+      0% { background: rgba(74, 222, 128, 0.3); }
+      100% { background: transparent; }
+    }
+
+    /* Settings Tab */
+    .settings-section {
+      background: #151515;
+      border: 1px solid #252525;
+      border-radius: 12px;
+      margin-bottom: 16px;
+    }
+    .settings-header {
+      padding: 20px;
+      border-bottom: 1px solid #252525;
+    }
+    .settings-header h3 { font-size: 16px; color: #fff; margin-bottom: 4px; }
+    .settings-header p { font-size: 13px; color: #666; }
+    .settings-body { padding: 20px; }
+    .form-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .form-row:last-child { margin-bottom: 0; }
+    .form-row label { min-width: 120px; color: #888; font-size: 14px; }
+    .form-row input {
+      flex: 1;
+      background: #0a0a0a;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 10px 14px;
+      color: #fff;
+      font-size: 14px;
+    }
+    .form-row input:focus { outline: none; border-color: #4ade80; }
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-primary { background: #4ade80; color: #000; }
+    .btn-primary:hover { background: #22c55e; }
+    .btn-secondary { background: #252525; color: #888; }
+    .btn-secondary:hover { background: #333; color: #fff; }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 13px;
+    }
+    .status-badge.running { background: #14532d; color: #4ade80; }
+    .status-badge::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    @media (max-width: 768px) {
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .quick-links { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Top Bar -->
+  <div class="topbar">
+    <a href="/_admin" class="back-btn">← 返回</a>
+    <span class="sep">/</span>
+    <span class="current">
+      <span class="icon">🎬</span>
+      LurlHub
+    </span>
+    <span class="status-badge running">運行中</span>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <a href="#overview" class="tab active" data-tab="overview">Overview</a>
+    <a href="#logs" class="tab" data-tab="logs">Logs</a>
+    <a href="#settings" class="tab" data-tab="settings">Settings</a>
+  </div>
+
+  <!-- Content -->
+  <div class="content">
+    <!-- Overview Tab -->
+    <div class="tab-content" id="tab-overview">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">總記錄數</div>
+          <div class="stat-value" id="statTotal">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">影片</div>
+          <div class="stat-value green" id="statVideos">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">圖片</div>
+          <div class="stat-value green" id="statImages">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">磁碟使用</div>
+          <div class="stat-value" id="statDisk">--</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">快捷連結</div>
+        <div class="quick-links">
+          <a href="/lurl/admin" target="_blank" class="quick-link">
+            <span class="icon">⚙️</span>
+            <div class="text">
+              <div class="title">管理後台</div>
+              <div class="desc">完整的管理介面</div>
+            </div>
+          </a>
+          <a href="/lurl/browse" target="_blank" class="quick-link">
+            <span class="icon">📂</span>
+            <div class="text">
+              <div class="title">瀏覽檔案</div>
+              <div class="desc">查看已備份的影片和圖片</div>
+            </div>
+          </a>
+          <a href="/lurl/health" target="_blank" class="quick-link">
+            <span class="icon">💓</span>
+            <div class="text">
+              <div class="title">健康檢查</div>
+              <div class="desc">API 狀態檢測</div>
+            </div>
+          </a>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">API 端點</div>
+        <div class="endpoints">
+          <div class="endpoint-row">
+            <span class="label">資料上傳</span>
+            <code>POST /lurl/capture</code>
+          </div>
+          <div class="endpoint-row">
+            <span class="label">瀏覽頁面</span>
+            <code>GET /lurl/browse</code>
+          </div>
+          <div class="endpoint-row">
+            <span class="label">統計 API</span>
+            <code>GET /lurl/api/stats</code>
+          </div>
+          <div class="endpoint-row">
+            <span class="label">健康檢查</span>
+            <code>GET /lurl/health</code>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Logs Tab -->
+    <div class="tab-content hidden" id="tab-logs">
+      <div class="logs-container" id="logsContainer">
+        <div class="logs-empty">載入中...</div>
+      </div>
+    </div>
+
+    <!-- Settings Tab -->
+    <div class="tab-content hidden" id="tab-settings">
+      <div class="settings-section">
+        <div class="settings-header">
+          <h3>服務狀態</h3>
+          <p>LurlHub 服務的運行狀態</p>
+        </div>
+        <div class="settings-body">
+          <div class="form-row">
+            <label>狀態</label>
+            <span class="status-badge running">運行中</span>
+          </div>
+          <div class="form-row">
+            <label>Puppeteer</label>
+            <span id="puppeteerStatus">檢查中...</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-header">
+          <h3>環境變數</h3>
+          <p>這些設定需要在伺服器的 .env 檔案中修改</p>
+        </div>
+        <div class="settings-body">
+          <div class="form-row">
+            <label>LURL_ADMIN_PASSWORD</label>
+            <input type="password" value="••••••••" disabled>
+          </div>
+          <div class="form-row">
+            <label>LURL_CLIENT_TOKEN</label>
+            <input type="password" value="••••••••" disabled>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Tab 切換
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', (e) => {
+        e.preventDefault();
+        const targetTab = tab.dataset.tab;
+
+        // 更新 tab 樣式
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+
+        // 顯示對應內容
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+        document.getElementById('tab-' + targetTab).classList.remove('hidden');
+
+        // 載入資料
+        if (targetTab === 'logs') loadLogs();
+      });
+    });
+
+    // 載入統計
+    async function loadStats() {
+      try {
+        const res = await fetch('/lurl/api/stats');
+        const data = await res.json();
+        document.getElementById('statTotal').textContent = data.totalRecords || 0;
+        document.getElementById('statVideos').textContent = data.totalVideos || 0;
+        document.getElementById('statImages').textContent = data.totalImages || 0;
+      } catch (e) {
+        console.error('載入統計失敗', e);
+      }
+
+      // 載入磁碟使用量
+      try {
+        const token = localStorage.getItem('cloudpipe_token');
+        const res = await fetch('/api/_admin/system', {
+          headers: { 'authorization': 'Bearer ' + token }
+        });
+        const data = await res.json();
+        document.getElementById('statDisk').textContent = data.disk ? data.disk.used : '--';
+        document.getElementById('puppeteerStatus').textContent = '已啟用';
+        document.getElementById('puppeteerStatus').style.color = '#4ade80';
+      } catch (e) {
+        console.error('載入系統資訊失敗', e);
+      }
+    }
+
+    // 載入日誌
+    let eventSource = null;
+
+    async function loadLogs() {
+      try {
+        // 先載入歷史日誌
+        const res = await fetch('/lurl/api/logs');
+        const data = await res.json();
+
+        if (!data.logs || data.logs.length === 0) {
+          document.getElementById('logsContainer').innerHTML = '<div class="logs-empty">等待新日誌...</div>';
+        } else {
+          renderLogs(data.logs);
+        }
+
+        // 連接 SSE 即時串流
+        connectSSE();
+      } catch (e) {
+        document.getElementById('logsContainer').innerHTML = '<div class="logs-empty">無法載入日誌</div>';
+      }
+    }
+
+    function connectSSE() {
+      if (eventSource) {
+        eventSource.close();
+      }
+
+      eventSource = new EventSource('/lurl/api/logs/stream');
+
+      eventSource.onmessage = (event) => {
+        const log = JSON.parse(event.data);
+        if (log.type === 'connected') {
+          console.log('SSE 已連接');
+          return;
+        }
+        // 新日誌加到最上面
+        addLogToTop(log);
+      };
+
+      eventSource.onerror = () => {
+        console.log('SSE 連接斷開，5秒後重連...');
+        setTimeout(connectSSE, 5000);
+      };
+    }
+
+    function renderLogs(logs) {
+      document.getElementById('logsContainer').innerHTML = logs.map(log => createLogRow(log)).join('');
+    }
+
+    function addLogToTop(log) {
+      const container = document.getElementById('logsContainer');
+      // 如果是空狀態，先清空
+      if (container.querySelector('.logs-empty')) {
+        container.innerHTML = '';
+      }
+      // 新日誌加到最上面，有個閃爍效果
+      const newRow = document.createElement('div');
+      newRow.innerHTML = createLogRow(log);
+      newRow.firstElementChild.classList.add('new-log');
+      container.insertBefore(newRow.firstElementChild, container.firstChild);
+      // 保持最多 50 筆
+      while (container.children.length > 50) {
+        container.removeChild(container.lastChild);
+      }
+    }
+
+    function createLogRow(log) {
+      return `<div class="log-row">
+        <span class="log-time">${formatTime(log.time)}</span>
+        <span class="log-type ${log.type}">${log.type}</span>
+        <span class="log-message">${log.message}</span>
+      </div>`;
+    }
+
+    function formatTime(isoString) {
+      const date = new Date(isoString);
+      return date.toLocaleString('zh-TW');
+    }
+
+    // 初始載入
+    loadStats();
+  </script>
+</body>
+</html>

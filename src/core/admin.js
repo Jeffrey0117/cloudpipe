@@ -188,6 +188,11 @@ module.exports = {
       return deleteApp(name, res);
     }
 
+    // GET /api/_admin/system - 系統資訊
+    if (req.method === 'GET' && pathname === '/api/_admin/system') {
+      return handleSystemInfo(req, res);
+    }
+
     // 404
     res.writeHead(404, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ error: 'Not found' }));
@@ -498,6 +503,92 @@ async function handleManualDeploy(req, res, id) {
     res.writeHead(400, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ error: err.message }));
   }
+}
+
+// 系統資訊
+async function handleSystemInfo(req, res) {
+  try {
+    const os = require('os');
+
+    // 取得 lurl 資料目錄大小和記錄數
+    // lurl.js 的 DATA_DIR = path.join(__dirname, '..', 'data', 'lurl')
+    // 也就是 cloudpipe/data/lurl/
+    const DATA_DIR = path.join(ROOT, 'data', 'lurl');
+    const RECORDS_FILE = path.join(DATA_DIR, 'records.jsonl');
+
+    let totalRecords = 0;
+    let totalVideos = 0;
+    let totalImages = 0;
+    let diskUsed = '0 MB';
+
+    // 讀取 lurl 資料庫統計（JSONL 格式，每行一個 JSON）
+    if (fs.existsSync(RECORDS_FILE)) {
+      try {
+        const content = fs.readFileSync(RECORDS_FILE, 'utf-8');
+        const lines = content.trim().split('\n').filter(line => line.trim());
+        const records = lines.map(line => {
+          try { return JSON.parse(line); } catch { return null; }
+        }).filter(r => r);
+        totalRecords = records.length;
+        totalVideos = records.filter(r => r.type === 'video').length;
+        totalImages = records.filter(r => r.type === 'image').length;
+      } catch (e) {
+        console.error('[admin] 讀取 lurl records 失敗:', e.message);
+      }
+    }
+
+    // 計算資料目錄大小
+    if (fs.existsSync(DATA_DIR)) {
+      try {
+        const size = getDirSize(DATA_DIR);
+        if (size > 1024 * 1024 * 1024) {
+          diskUsed = (size / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+        } else {
+          diskUsed = (size / 1024 / 1024).toFixed(2) + ' MB';
+        }
+      } catch (e) {
+        console.error('[admin] 計算目錄大小失敗:', e.message);
+      }
+    }
+
+    // 系統總磁碟空間（粗略估計）
+    const diskTotal = '50 GB'; // VPS 預設值
+
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({
+      disk: {
+        used: diskUsed,
+        total: diskTotal
+      },
+      totalRecords,
+      totalVideos,
+      totalImages,
+      uptime: process.uptime()
+    }));
+  } catch (err) {
+    res.writeHead(500, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: err.message }));
+  }
+}
+
+// 計算目錄大小
+function getDirSize(dirPath) {
+  let size = 0;
+  try {
+    const files = fs.readdirSync(dirPath);
+    for (const file of files) {
+      const filePath = path.join(dirPath, file);
+      const stat = fs.statSync(filePath);
+      if (stat.isDirectory()) {
+        size += getDirSize(filePath);
+      } else {
+        size += stat.size;
+      }
+    }
+  } catch (e) {
+    // 忽略無法讀取的目錄
+  }
+  return size;
 }
 
 // GitHub Webhook 處理

@@ -84,6 +84,16 @@ module.exports = function(config) {
       }
     }
 
+    // /_admin/xxx → admin-xxx.html (服務後台頁面)
+    if (urlPath.startsWith('/_admin/')) {
+      const serviceName = urlPath.replace('/_admin/', '').replace(/\/$/, '');
+      const adminFile = path.join(publicDir, `admin-${serviceName}.html`);
+      if (fs.existsSync(adminFile)) {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        return res.end(fs.readFileSync(adminFile));
+      }
+    }
+
     // 靜態檔案 (public/)
     const staticFile = urlPath === '/' ? '/index.html' : urlPath;
     const filePath = path.join(publicDir, staticFile);
