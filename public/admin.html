@@ -32,7 +32,9 @@
       width: 100%;
       max-width: 360px;
     }
-    .login-box h1 { font-size: 2rem; font-weight: 300; color: #fff; margin-bottom: 0.25rem; }
+    .login-box .logo-row { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 0.25rem; }
+    .login-box .logo-row img { height: 56px; }
+    .login-box h1 { font-size: 2rem; font-weight: 300; color: #fff; margin: 0; }
     .login-box > p { color: #666; margin-bottom: 2rem; }
     .login-box input {
       width: 100%;
@@ -63,8 +65,10 @@
     header { margin-bottom: 3rem; }
     .header-row { display: flex; justify-content: space-between; align-items: center; }
     .header-center { text-align: center; flex: 1; }
+    .header-title { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 0.5rem; }
+    .header-title img { height: 64px; }
     .header-side { width: 100px; } /* 左右兩邊等寬，讓中間置中 */
-    header h1 { font-size: 2.5rem; font-weight: 300; color: #fff; margin-bottom: 0.5rem; }
+    header h1 { font-size: 2.5rem; font-weight: 300; color: #fff; margin: 0; }
     .subtitle { color: #666; font-size: 1rem; }
     .manage-btn {
       display: flex;
@@ -190,7 +194,10 @@
 <body>
   <div class="login-screen" id="loginScreen">
     <div class="login-box">
-      <h1>CloudPipe</h1>
+      <div class="logo-row">
+        <img src="/LOGO.png" alt="CloudPipe">
+        <h1>CloudPipe</h1>
+      </div>
       <p>Admin Login</p>
       <input type="password" id="passwordInput" placeholder="Password">
       <button id="loginBtn" onclick="doLogin()">Login</button>
@@ -203,8 +210,10 @@
       <div class="header-row">
         <div class="header-side"></div>
         <div class="header-center">
-          <img src="/LOGO.png" alt="CloudPipe" style="height: 48px; margin-bottom: 8px;">
-          <h1>CloudPipe</h1>
+          <div class="header-title">
+            <img src="/LOGO.png" alt="CloudPipe">
+            <h1>CloudPipe</h1>
+          </div>
           <p class="subtitle">Dashboard</p>
         </div>
         <div class="header-side" style="text-align: right;">
