@@ -21,6 +21,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { pipeline } = require('stream/promises');
+const sharp = require('sharp');
 
 // 備援下載模組 (Puppeteer - 在頁面 context 下載)
 let lurlRetry = null;
@@ -238,18 +239,51 @@ async function generateVideoThumbnail(videoPath, thumbnailPath) {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    // ffmpeg 擷取第 1 秒的畫面，縮放到 320px 寬
-    const cmd = `ffmpeg -i "${videoPath}" -ss 00:00:01 -vframes 1 -vf "scale=320:-1" -y "${thumbnailPath}"`;
+    // ffmpeg 擷取第 1 秒的畫面，輸出 PNG（後續用 sharp 轉 WebP）
+    const tempPath = thumbnailPath.replace(/\.\w+$/, '_temp.png');
+    const cmd = `ffmpeg -i "${videoPath}" -ss 00:00:01 -vframes 1 -vf "scale=320:-1" -y "${tempPath}"`;
     await execAsync(cmd, { timeout: 30000 });
 
-    if (fs.existsSync(thumbnailPath)) {
-      console.log(`[lurl] ✅ 縮圖產生成功: ${thumbnailPath}`);
+    if (fs.existsSync(tempPath)) {
+      // 用 sharp 轉成 WebP 並壓縮
+      await sharp(tempPath)
+        .webp({ quality: 75 })
+        .toFile(thumbnailPath);
+
+      // 刪除暫存檔
+      fs.unlinkSync(tempPath);
+      console.log(`[lurl] ✅ 影片縮圖產生成功 (WebP): ${thumbnailPath}`);
       return true;
     }
     return false;
   } catch (err) {
     console.log(`[lurl] ⚠️ 縮圖產生失敗: ${err.message}`);
     return false;
+  }
+}
+
+// 圖片處理：生成 WebP 縮圖
+async function processImage(sourcePath, id) {
+  try {
+    const thumbDir = THUMBNAILS_DIR;
+    if (!fs.existsSync(thumbDir)) {
+      fs.mkdirSync(thumbDir, { recursive: true });
+    }
+
+    const thumbFilename = `${id}.webp`;
+    const thumbPath = path.join(thumbDir, thumbFilename);
+
+    // 讀取原圖並生成 320px 寬的 WebP 縮圖
+    await sharp(sourcePath)
+      .resize(320, null, { withoutEnlargement: true })
+      .webp({ quality: 75 })
+      .toFile(thumbPath);
+
+    console.log(`[lurl] ✅ 圖片縮圖產生成功: ${thumbFilename}`);
+    return `thumbnails/${thumbFilename}`;
+  } catch (err) {
+    console.log(`[lurl] ⚠️ 圖片處理失敗: ${err.message}`);
+    return null;
   }
 }
 
@@ -932,7 +966,18 @@ function browsePage() {
     .tab { padding: 8px 16px; background: #333; border: none; border-radius: 20px; color: white; cursor: pointer; transition: all 0.2s; }
     .tab:hover { background: #444; }
     .tab.active { background: #3b82f6; color: #fff; }
-    .result-count { margin-left: auto; color: #666; font-size: 0.9em; }
+    .result-count { margin-left: auto; color: #888; font-size: 1.1em; font-weight: 500; }
+
+    /* Pagination */
+    .pagination { display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 30px; flex-wrap: wrap; }
+    .pagination button { min-width: 40px; height: 40px; border: none; border-radius: 8px; background: #252525; color: #888; cursor: pointer; font-size: 14px; transition: all 0.2s; }
+    .pagination button:hover:not(:disabled) { background: #333; color: #fff; }
+    .pagination button.active { background: #3b82f6; color: #fff; }
+    .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .pagination button.nav-btn { padding: 0 12px; }
+    .pagination button .nav-text { display: inline; }
+    .pagination button .nav-icon { display: none; }
+    .pagination .page-info { color: #666; font-size: 14px; margin: 0 10px; }
 
     /* Grid */
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
@@ -1045,6 +1090,75 @@ function browsePage() {
     .card-actions .btn-block:hover { background: #c62828; color: white; }
     .card.blocked { opacity: 0.5; }
     .card.blocked .card-thumb { filter: grayscale(1); }
+
+    /* ===== RWD 響應式設計 ===== */
+
+    /* Tablet (768px - 1023px) */
+    @media (max-width: 1023px) {
+      .container { padding: 16px; }
+      .grid { grid-template-columns: repeat(3, 1fr); gap: 16px; }
+      .card-thumb .play-icon { width: 50px; height: 50px; }
+      .card-thumb .play-icon::after { border-left-width: 14px; border-top-width: 9px; border-bottom-width: 9px; }
+    }
+
+    /* Mobile Landscape (480px - 767px) */
+    @media (max-width: 767px) {
+      .header { padding: 12px 16px; }
+      .header .logo { height: 28px; }
+      .header h1 { font-size: 1.1em; }
+      .header nav { gap: 12px; }
+      .header nav a { font-size: 0.85em; }
+
+      .container { padding: 12px; }
+      .search-bar input { padding: 10px 14px; font-size: 16px; max-width: 100%; }
+
+      .filter-bar { flex-direction: column; align-items: stretch; gap: 12px; }
+      .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
+      .tabs::-webkit-scrollbar { display: none; }
+      .tab { padding: 6px 12px; font-size: 0.9em; white-space: nowrap; flex-shrink: 0; }
+      .result-count { margin-left: 0; text-align: center; }
+
+      .grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+      .card { border-radius: 10px; }
+      .card-info { padding: 10px; }
+      .card-title { font-size: 0.85em; -webkit-line-clamp: 2; }
+      .card-date { font-size: 0.75em; }
+      .card-id { font-size: 0.7em; padding: 2px 6px; }
+      .card-actions { flex-wrap: wrap; }
+      .card-actions button { padding: 3px 6px; font-size: 0.8em; }
+
+      .pagination { gap: 6px; margin-top: 24px; }
+      .pagination button { min-width: 36px; height: 36px; font-size: 13px; }
+      .pagination .page-info { font-size: 12px; margin: 0 6px; }
+
+      .toast { bottom: 12px; right: 12px; left: 12px; text-align: center; }
+    }
+
+    /* Mobile Portrait (< 480px) */
+    @media (max-width: 479px) {
+      .header { padding: 10px 12px; }
+      .header .logo { height: 24px; }
+      .header h1 { font-size: 1em; }
+      .header nav a { font-size: 0.8em; }
+
+      .container { padding: 10px; }
+      .search-bar { margin-bottom: 12px; }
+      .filter-bar { margin-bottom: 12px; }
+
+      .grid { gap: 10px; }
+      .card { border-radius: 8px; }
+      .card-thumb { font-size: 36px; }
+      .card-thumb .play-icon { width: 44px; height: 44px; }
+      .card-thumb .play-icon::after { border-left-width: 12px; border-top-width: 7px; border-bottom-width: 7px; margin-left: 3px; }
+      .card-info { padding: 8px; }
+      .card-title { font-size: 0.8em; margin-bottom: 6px; }
+      .card-meta { flex-direction: column; align-items: flex-start; gap: 4px; }
+      .card-actions button { min-height: 32px; }
+
+      .pagination button .nav-text { display: none; }
+      .pagination button .nav-icon { display: inline; }
+      .pagination button.nav-btn { min-width: 36px; padding: 0; }
+    }
   </style>
 </head>
 <body>
@@ -1084,6 +1198,7 @@ function browsePage() {
         </div>
       `).join('')}
     </div>
+    <div class="pagination" id="pagination"></div>
   </div>
   <div class="toast" id="toast"></div>
 
@@ -1112,21 +1227,17 @@ function browsePage() {
 
     let currentPage = 1;
     let totalRecords = 0;
-    let hasMore = true;
+    let totalPages = 1;
+    const perPage = 24;
 
-    async function loadRecords(append = false) {
+    async function loadRecords() {
       if (isLoading) return;
-      if (!append) {
-        currentPage = 1;
-        allRecords = [];
-        hasMore = true;
-        showSkeleton();
-      }
+      showSkeleton();
       isLoading = true;
 
       const params = new URLSearchParams({
         page: currentPage,
-        limit: 30,
+        limit: perPage,
         ...(currentType !== 'all' && { type: currentType }),
         ...(searchQuery && { q: searchQuery })
       });
@@ -1135,18 +1246,63 @@ function browsePage() {
       const data = await res.json();
       isLoading = false;
 
-      if (append) {
-        allRecords = [...allRecords, ...data.records];
-      } else {
-        allRecords = data.records;
-      }
+      allRecords = data.records;
       totalRecords = data.total;
-      hasMore = data.hasMore;
+      totalPages = Math.ceil(totalRecords / perPage) || 1;
 
-      renderGrid(append);
+      renderGrid();
+      renderPagination();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
-    function renderGrid(append = false) {
+    function goToPage(page) {
+      if (page < 1 || page > totalPages || page === currentPage) return;
+      currentPage = page;
+      // 更新 URL
+      const url = new URL(window.location);
+      url.searchParams.set('page', page);
+      history.pushState({}, '', url);
+      loadRecords();
+    }
+
+    function renderPagination() {
+      if (totalPages <= 1) {
+        document.getElementById('pagination').innerHTML = '';
+        return;
+      }
+
+      let html = '';
+      html += \`<button class="nav-btn" onclick="goToPage(\${currentPage - 1})" \${currentPage === 1 ? 'disabled' : ''}><span class="nav-icon">‹</span><span class="nav-text">上一頁</span></button>\`;
+
+      // 顯示頁碼邏輯
+      const maxVisible = 5;
+      let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+      let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+      if (endPage - startPage < maxVisible - 1) {
+        startPage = Math.max(1, endPage - maxVisible + 1);
+      }
+
+      if (startPage > 1) {
+        html += \`<button onclick="goToPage(1)">1</button>\`;
+        if (startPage > 2) html += \`<span class="page-info">...</span>\`;
+      }
+
+      for (let i = startPage; i <= endPage; i++) {
+        html += \`<button onclick="goToPage(\${i})" class="\${i === currentPage ? 'active' : ''}">\${i}</button>\`;
+      }
+
+      if (endPage < totalPages) {
+        if (endPage < totalPages - 1) html += \`<span class="page-info">...</span>\`;
+        html += \`<button onclick="goToPage(\${totalPages})">\${totalPages}</button>\`;
+      }
+
+      html += \`<button class="nav-btn" onclick="goToPage(\${currentPage + 1})" \${currentPage === totalPages ? 'disabled' : ''}><span class="nav-text">下一頁</span><span class="nav-icon">›</span></button>\`;
+      html += \`<span class="page-info">\${currentPage} / \${totalPages}</span>\`;
+
+      document.getElementById('pagination').innerHTML = html;
+    }
+
+    function renderGrid() {
       document.getElementById('resultCount').textContent = totalRecords + ' items';
 
       if (allRecords.length === 0) {
@@ -1162,9 +1318,9 @@ function browsePage() {
           <div class="card-thumb \${r.type === 'image' ? 'image' : ''} \${!r.fileExists ? 'pending' : ''}">
             \${r.fileExists
               ? (r.type === 'image'
-                ? \`<img src="/lurl/files/\${r.backupPath}" alt="\${getTitle(r.title)}" onerror="this.style.display='none'">\`
+                ? \`<img src="/lurl/files/\${r.thumbnailPath || r.backupPath}" loading="lazy" alt="\${getTitle(r.title)}" onerror="this.style.display='none'">\`
                 : (r.thumbnailExists && r.thumbnailPath
-                  ? \`<img src="/lurl/files/\${r.thumbnailPath}" alt="\${getTitle(r.title)}" onerror="this.parentElement.innerHTML='<div class=play-icon></div>'"><div class="play-icon" style="position:absolute;"></div>\`
+                  ? \`<img src="/lurl/files/\${r.thumbnailPath}" loading="lazy" alt="\${getTitle(r.title)}" onerror="this.parentElement.innerHTML='<div class=play-icon></div>'"><div class="play-icon" style="position:absolute;"></div>\`
                   : '<div class="play-icon"></div>'))
               : '<span style="font-size:24px;color:#666">Pending</span>'}
           </div>
@@ -1186,16 +1342,6 @@ function browsePage() {
 
       document.getElementById('grid').innerHTML = html;
     }
-
-    // 無限滾動
-    window.addEventListener('scroll', () => {
-      if (isLoading || !hasMore) return;
-      const scrollBottom = window.innerHeight + window.scrollY >= document.body.offsetHeight - 500;
-      if (scrollBottom) {
-        currentPage++;
-        loadRecords(true);
-      }
-    });
 
     function copyId(id) {
       navigator.clipboard.writeText(id);
@@ -1278,7 +1424,8 @@ function browsePage() {
         tab.classList.add('active');
         currentType = tab.dataset.type;
         localStorage.setItem('lurl_browse_tab', currentType);
-        loadRecords(); // 重新從 server 載入
+        currentPage = 1; // 重置頁碼
+        loadRecords();
       });
     });
 
@@ -1288,17 +1435,29 @@ function browsePage() {
       clearTimeout(searchTimeout);
       searchTimeout = setTimeout(() => {
         searchQuery = e.target.value.trim();
-        loadRecords(); // 重新從 server 載入
+        currentPage = 1; // 重置頁碼
+        loadRecords();
       }, 300);
     });
 
-    // URL param for search
+    // URL params
     const urlParams = new URLSearchParams(window.location.search);
     const qParam = urlParams.get('q');
+    const pageParam = urlParams.get('page');
     if (qParam) {
       document.getElementById('search').value = qParam;
       searchQuery = qParam;
     }
+    if (pageParam) {
+      currentPage = parseInt(pageParam) || 1;
+    }
+
+    // 瀏覽器上一頁/下一頁
+    window.addEventListener('popstate', () => {
+      const params = new URLSearchParams(window.location.search);
+      currentPage = parseInt(params.get('page')) || 1;
+      loadRecords();
+    });
 
     loadRecords();
   </script>
@@ -1350,6 +1509,44 @@ function viewPage(record, fileExists) {
     .status { margin-top: 10px; font-size: 0.9em; }
     .status.success { color: #4ade80; }
     .status.error { color: #f87171; }
+
+    /* ===== RWD 響應式設計 ===== */
+    @media (max-width: 767px) {
+      .header { padding: 12px 16px; }
+      .header .logo { height: 28px; }
+      .header h1 { font-size: 1.1em; }
+      .header nav { gap: 12px; }
+      .header nav a { font-size: 0.85em; }
+
+      .container { padding: 12px; }
+      .media-container { border-radius: 8px; margin-bottom: 16px; }
+      .media-container video, .media-container img { max-height: 50vh; }
+
+      .back-link { margin-bottom: 12px; font-size: 0.9em; }
+      .info { padding: 16px; border-radius: 10px; }
+      .info h2 { font-size: 1.1em; margin-bottom: 12px; }
+      .info-row { font-size: 0.85em; flex-wrap: wrap; }
+
+      .actions { gap: 8px; }
+      .btn { padding: 10px 16px; font-size: 0.9em; flex: 1; min-width: 120px; text-align: center; }
+    }
+
+    @media (max-width: 479px) {
+      .header { padding: 10px 12px; }
+      .header .logo { height: 24px; }
+      .header nav a { font-size: 0.8em; }
+
+      .container { padding: 10px; }
+      .media-container { border-radius: 6px; }
+      .media-container video, .media-container img { max-height: 40vh; }
+
+      .info { padding: 12px; border-radius: 8px; }
+      .info h2 { font-size: 1em; }
+      .info-row { font-size: 0.8em; margin-bottom: 8px; }
+
+      .actions { flex-direction: column; }
+      .btn { width: 100%; min-height: 44px; }
+    }
   </style>
 </head>
 <body>
@@ -1358,8 +1555,8 @@ function viewPage(record, fileExists) {
       <img src="/lurl/files/LOGO.png" alt="Lurl" class="logo">
     </div>
     <nav>
-      <a href="/lurl/admin">管理面板</a>
-      <a href="/lurl/browse">影片庫</a>
+      <a href="/lurl/admin">管理</a>
+      <a href="/lurl/browse">瀏覽</a>
     </nav>
   </div>
   <div class="container">
@@ -1533,17 +1730,22 @@ module.exports = {
         const folder = type === 'video' ? 'videos' : 'images';
         const backupPath = `${folder}/${filename}`; // 用正斜線，URL 才正確
 
-        // 保存縮圖（如果有）
+        // 保存縮圖（如果有）- 轉成 WebP 格式
         let thumbnailPath = null;
         if (thumbnail && type === 'video') {
           try {
-            const thumbFilename = `${id}.jpg`;
+            const thumbFilename = `${id}.webp`;
             const thumbFullPath = path.join(THUMBNAILS_DIR, thumbFilename);
             // thumbnail 是 data:image/jpeg;base64,... 格式
             const base64Data = thumbnail.replace(/^data:image\/\w+;base64,/, '');
-            fs.writeFileSync(thumbFullPath, Buffer.from(base64Data, 'base64'));
+            const buffer = Buffer.from(base64Data, 'base64');
+            // 用 sharp 轉成 WebP 並壓縮
+            await sharp(buffer)
+              .resize(320, null, { withoutEnlargement: true })
+              .webp({ quality: 75 })
+              .toFile(thumbFullPath);
             thumbnailPath = `thumbnails/${thumbFilename}`;
-            console.log(`[lurl] 縮圖已存: ${thumbFilename}`);
+            console.log(`[lurl] 縮圖已存 (WebP): ${thumbFilename}`);
           } catch (thumbErr) {
             console.error(`[lurl] 縮圖保存失敗: ${thumbErr.message}`);
           }
@@ -1570,14 +1772,22 @@ module.exports = {
         downloadFile(fileUrl, videoFullPath, pageUrl, cookies || '').then(async (ok) => {
           console.log(`[lurl] 後端備份${ok ? '完成' : '失敗'}: ${filename}${cookies ? ' (有cookie)' : ''}`);
 
-          // 下載成功且是影片且沒有縮圖 → 用 ffmpeg 產生縮圖
-          if (ok && type === 'video' && !thumbnailPath) {
-            const thumbFilename = `${id}.jpg`;
-            const thumbFullPath = path.join(THUMBNAILS_DIR, thumbFilename);
-            const thumbOk = await generateVideoThumbnail(videoFullPath, thumbFullPath);
-            if (thumbOk) {
-              // 更新記錄加入 thumbnailPath
-              updateRecordThumbnail(id, `thumbnails/${thumbFilename}`);
+          // 下載成功後處理縮圖
+          if (ok) {
+            if (type === 'video' && !thumbnailPath) {
+              // 影片：用 ffmpeg 產生縮圖
+              const thumbFilename = `${id}.webp`;
+              const thumbFullPath = path.join(THUMBNAILS_DIR, thumbFilename);
+              const thumbOk = await generateVideoThumbnail(videoFullPath, thumbFullPath);
+              if (thumbOk) {
+                updateRecordThumbnail(id, `thumbnails/${thumbFilename}`);
+              }
+            } else if (type === 'image') {
+              // 圖片：用 sharp 產生縮圖
+              const thumbPath = await processImage(videoFullPath, id);
+              if (thumbPath) {
+                updateRecordThumbnail(id, thumbPath);
+              }
             }
           }
         });
@@ -1668,6 +1878,13 @@ module.exports = {
             fs.rmSync(chunkDir, { recursive: true });
 
             console.log(`[lurl] 分塊上傳完成: ${filename} (${(finalBuffer.length / 1024 / 1024).toFixed(2)} MB)`);
+
+            // 上傳完成後為圖片生成縮圖
+            if (record.type === 'image' && !record.thumbnailPath) {
+              processImage(destPath, id).then(thumbPath => {
+                if (thumbPath) updateRecordThumbnail(id, thumbPath);
+              });
+            }
           }
 
           res.writeHead(200, corsHeaders());
@@ -1676,6 +1893,13 @@ module.exports = {
           // 單次上傳（小檔案）
           fs.writeFileSync(destPath, buffer);
           console.log(`[lurl] 前端上傳成功: ${filename} (${(buffer.length / 1024 / 1024).toFixed(2)} MB)`);
+
+          // 上傳完成後為圖片生成縮圖
+          if (record.type === 'image' && !record.thumbnailPath) {
+            processImage(destPath, id).then(thumbPath => {
+              if (thumbPath) updateRecordThumbnail(id, thumbPath);
+            });
+          }
 
           res.writeHead(200, corsHeaders());
           res.end(JSON.stringify({ ok: true, size: buffer.length }));
@@ -2724,7 +2948,8 @@ module.exports = {
         '.jpg': 'image/jpeg',
         '.jpeg': 'image/jpeg',
         '.png': 'image/png',
-        '.gif': 'image/gif'
+        '.gif': 'image/gif',
+        '.webp': 'image/webp'
       };
       const contentType = mimeTypes[ext] || 'application/octet-stream';
       const stat = fs.statSync(fullFilePath);
