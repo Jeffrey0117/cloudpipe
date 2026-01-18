@@ -48,6 +48,8 @@ const THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails');
 
 // 修復服務設定
 const FREE_QUOTA = 3;
+// VIP 白名單（無限額度），用逗號分隔多個 visitorId
+const VIP_WHITELIST = (process.env.LURL_VIP_WHITELIST || '').split(',').filter(Boolean);
 
 // SSE 即時日誌客戶端
 const sseClients = new Set();
@@ -356,6 +358,10 @@ function readAllQuotas() {
   }).filter(Boolean);
 }
 
+function isVipVisitor(visitorId) {
+  return VIP_WHITELIST.includes(visitorId);
+}
+
 function getVisitorQuota(visitorId) {
   const quotas = readAllQuotas();
   let quota = quotas.find(q => q.visitorId === visitorId);
@@ -364,9 +370,16 @@ function getVisitorQuota(visitorId) {
       visitorId,
       usedCount: 0,
       freeQuota: FREE_QUOTA,
-      paidQuota: 0,
+      bonusQuota: 0,       // 管理員配發的額度
+      status: 'active',    // active | banned | vip
+      note: '',            // 管理員備註
+      createdAt: new Date().toISOString(),
       history: []
     };
+  }
+  // 檢查是否在 VIP 白名單
+  if (isVipVisitor(visitorId)) {
+    quota.status = 'vip';
   }
   return quota;
 }
@@ -387,7 +400,10 @@ function useQuota(visitorId, pageUrl, urlId, backupUrl) {
       visitorId,
       usedCount: 1,
       freeQuota: FREE_QUOTA,
-      paidQuota: 0,
+      bonusQuota: 0,
+      status: 'active',
+      note: '',
+      createdAt: new Date().toISOString(),
       lastUsed: new Date().toISOString(),
       history: [historyEntry]
     });
@@ -401,6 +417,37 @@ function useQuota(visitorId, pageUrl, urlId, backupUrl) {
   return getVisitorQuota(visitorId);
 }
 
+function updateQuota(visitorId, updates) {
+  const quotas = readAllQuotas();
+  let quotaIndex = quotas.findIndex(q => q.visitorId === visitorId);
+
+  if (quotaIndex === -1) {
+    // 如果不存在，先建立
+    const newQuota = {
+      visitorId,
+      usedCount: 0,
+      freeQuota: FREE_QUOTA,
+      bonusQuota: 0,
+      status: 'active',
+      note: '',
+      createdAt: new Date().toISOString(),
+      history: [],
+      ...updates
+    };
+    quotas.push(newQuota);
+  } else {
+    quotas[quotaIndex] = { ...quotas[quotaIndex], ...updates };
+  }
+
+  fs.writeFileSync(QUOTAS_FILE, quotas.map(q => JSON.stringify(q)).join('\n') + '\n', 'utf8');
+  return getVisitorQuota(visitorId);
+}
+
+function deleteQuota(visitorId) {
+  const quotas = readAllQuotas().filter(q => q.visitorId !== visitorId);
+  fs.writeFileSync(QUOTAS_FILE, quotas.map(q => JSON.stringify(q)).join('\n') + '\n', 'utf8');
+}
+
 // 檢查是否已修復過此 URL
 function hasRecovered(visitorId, urlId) {
   const quota = getVisitorQuota(visitorId);
@@ -408,7 +455,15 @@ function hasRecovered(visitorId, urlId) {
 }
 
 function getRemainingQuota(quota) {
-  return (quota.freeQuota - quota.usedCount) + quota.paidQuota;
+  // VIP 或白名單用戶 = 無限額度
+  if (quota.status === 'vip' || isVipVisitor(quota.visitorId)) {
+    return Infinity;
+  }
+  // 被封禁 = 0 額度
+  if (quota.status === 'banned') {
+    return 0;
+  }
+  return (quota.freeQuota + (quota.bonusQuota || 0)) - quota.usedCount;
 }
 
 function parseBody(req) {
@@ -632,6 +687,76 @@ function adminPage() {
           </div>
           <div class="maintenance-status" id="repairStatus">就緒</div>
           <button class="btn btn-primary btn-sm" onclick="repairPaths()" id="repairBtn">執行</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 額度管理 -->
+    <div class="version-panel" style="margin-top: 20px;">
+      <h2>👥 額度管理</h2>
+      <div class="quota-summary" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 15px;">
+        <div style="background:#f5f5f5; padding:12px; border-radius:8px; text-align:center;">
+          <div style="font-size:1.5em; font-weight:bold;" id="quotaTotalUsers">-</div>
+          <div style="font-size:0.8em; color:#666;">總用戶數</div>
+        </div>
+        <div style="background:#e8f5e9; padding:12px; border-radius:8px; text-align:center;">
+          <div style="font-size:1.5em; font-weight:bold; color:#2e7d32;" id="quotaActiveUsers">-</div>
+          <div style="font-size:0.8em; color:#666;">活躍用戶</div>
+        </div>
+        <div style="background:#fff3e0; padding:12px; border-radius:8px; text-align:center;">
+          <div style="font-size:1.5em; font-weight:bold; color:#ef6c00;" id="quotaVipUsers">-</div>
+          <div style="font-size:0.8em; color:#666;">VIP 用戶</div>
+        </div>
+        <div style="background:#ffebee; padding:12px; border-radius:8px; text-align:center;">
+          <div style="font-size:1.5em; font-weight:bold; color:#c62828;" id="quotaBannedUsers">-</div>
+          <div style="font-size:0.8em; color:#666;">已封禁</div>
+        </div>
+      </div>
+      <div class="quota-list" id="quotaList" style="max-height: 400px; overflow-y: auto;">
+        <div style="text-align:center; color:#999; padding:20px;">載入中...</div>
+      </div>
+    </div>
+
+    <!-- 額度編輯 Modal -->
+    <div id="quotaModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+      <div style="background:white; border-radius:12px; padding:24px; max-width:400px; width:90%; max-height:80vh; overflow-y:auto;">
+        <h3 style="margin:0 0 20px 0;">管理用戶</h3>
+        <div style="margin-bottom:15px;">
+          <label style="font-size:0.85em; color:#666;">用戶 ID</label>
+          <div id="modalVisitorId" style="font-family:monospace; background:#f5f5f5; padding:8px; border-radius:4px; word-break:break-all;"></div>
+        </div>
+        <div style="margin-bottom:15px;">
+          <label style="font-size:0.85em; color:#666;">目前額度</label>
+          <div id="modalCurrentQuota" style="font-size:1.2em; font-weight:bold;"></div>
+        </div>
+        <div style="margin-bottom:15px;">
+          <label style="font-size:0.85em; color:#666;">備註</label>
+          <input type="text" id="modalNote" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;" placeholder="添加備註...">
+        </div>
+        <div style="margin-bottom:15px;">
+          <label style="font-size:0.85em; color:#666;">配發額度</label>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" onclick="addQuota(5)">+5</button>
+            <button class="btn btn-primary btn-sm" onclick="addQuota(10)">+10</button>
+            <button class="btn btn-primary btn-sm" onclick="addQuota(20)">+20</button>
+            <button class="btn btn-primary btn-sm" onclick="addQuota(50)">+50</button>
+          </div>
+        </div>
+        <div style="margin-bottom:20px;">
+          <label style="font-size:0.85em; color:#666;">狀態操作</label>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+            <button class="btn btn-sm" style="background:#4caf50; color:white;" onclick="setUserStatus('active')">✅ 正常</button>
+            <button class="btn btn-sm" style="background:#ff9800; color:white;" onclick="setUserStatus('vip')">⭐ VIP</button>
+            <button class="btn btn-sm" style="background:#f44336; color:white;" onclick="setUserStatus('banned')">🚫 封禁</button>
+          </div>
+        </div>
+        <div style="margin-bottom:15px;">
+          <label style="font-size:0.85em; color:#666;">使用歷史 (最近 5 筆)</label>
+          <div id="modalHistory" style="font-size:0.85em; background:#f9f9f9; padding:10px; border-radius:4px; max-height:150px; overflow-y:auto;"></div>
+        </div>
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+          <button class="btn" style="background:#e0e0e0;" onclick="closeQuotaModal()">關閉</button>
+          <button class="btn btn-primary" onclick="saveQuotaChanges()">儲存</button>
         </div>
       </div>
     </div>
@@ -927,10 +1052,171 @@ function adminPage() {
       }
     }
 
+    // ===== 額度管理 =====
+    let allQuotas = [];
+    let currentEditingQuota = null;
+
+    async function loadQuotas() {
+      try {
+        const res = await fetch('/lurl/api/quotas');
+        const data = await res.json();
+        if (data.ok) {
+          allQuotas = data.quotas;
+          renderQuotaSummary();
+          renderQuotaList();
+        }
+      } catch (e) {
+        document.getElementById('quotaList').innerHTML = '<div style="text-align:center;color:#999;padding:20px;">載入失敗</div>';
+      }
+    }
+
+    function renderQuotaSummary() {
+      const total = allQuotas.length;
+      const active = allQuotas.filter(q => q.status === 'active').length;
+      const vip = allQuotas.filter(q => q.status === 'vip' || q.isVip).length;
+      const banned = allQuotas.filter(q => q.status === 'banned').length;
+
+      document.getElementById('quotaTotalUsers').textContent = total;
+      document.getElementById('quotaActiveUsers').textContent = active;
+      document.getElementById('quotaVipUsers').textContent = vip;
+      document.getElementById('quotaBannedUsers').textContent = banned;
+    }
+
+    function renderQuotaList() {
+      if (allQuotas.length === 0) {
+        document.getElementById('quotaList').innerHTML = '<div style="text-align:center;color:#999;padding:20px;">尚無用戶</div>';
+        return;
+      }
+
+      const html = allQuotas.map(q => {
+        const statusIcon = q.status === 'banned' ? '🔴' : (q.status === 'vip' || q.isVip ? '⭐' : '🟢');
+        const statusText = q.status === 'banned' ? '封禁' : (q.status === 'vip' || q.isVip ? 'VIP' : '正常');
+        const remaining = q.remaining === Infinity ? '∞' : q.remaining;
+        const lastUsed = q.lastUsed ? new Date(q.lastUsed).toLocaleDateString() : '從未';
+
+        return \`<div class="maintenance-item" style="cursor:pointer;" onclick="openQuotaModal('\${q.visitorId}')">
+          <div class="maintenance-icon">\${statusIcon}</div>
+          <div class="maintenance-info" style="flex:1;">
+            <div class="maintenance-label" style="font-family:monospace; font-size:0.85em;">\${q.visitorId.substring(0,16)}...</div>
+            <div class="maintenance-desc">\${q.note || '無備註'}</div>
+          </div>
+          <div style="text-align:center; min-width:80px;">
+            <div style="font-weight:bold;">\${q.usedCount} / \${q.total}</div>
+            <div style="font-size:0.75em; color:#888;">已用/總額</div>
+          </div>
+          <div style="text-align:center; min-width:60px;">
+            <div style="font-weight:bold; color:\${remaining === '∞' ? '#ff9800' : (remaining <= 0 ? '#f44336' : '#4caf50')}">\${remaining}</div>
+            <div style="font-size:0.75em; color:#888;">剩餘</div>
+          </div>
+          <div style="font-size:0.8em; color:#888; min-width:70px; text-align:right;">\${lastUsed}</div>
+        </div>\`;
+      }).join('');
+
+      document.getElementById('quotaList').innerHTML = html;
+    }
+
+    function openQuotaModal(visitorId) {
+      currentEditingQuota = allQuotas.find(q => q.visitorId === visitorId);
+      if (!currentEditingQuota) return;
+
+      document.getElementById('modalVisitorId').textContent = visitorId;
+      document.getElementById('modalCurrentQuota').textContent = \`已用 \${currentEditingQuota.usedCount} / 總額 \${currentEditingQuota.total} (剩餘 \${currentEditingQuota.remaining === Infinity ? '∞' : currentEditingQuota.remaining})\`;
+      document.getElementById('modalNote').value = currentEditingQuota.note || '';
+
+      // 顯示歷史
+      const history = (currentEditingQuota.history || []).slice(-5).reverse();
+      if (history.length === 0) {
+        document.getElementById('modalHistory').innerHTML = '<div style="color:#999;">無使用記錄</div>';
+      } else {
+        document.getElementById('modalHistory').innerHTML = history.map(h => \`
+          <div style="padding:4px 0; border-bottom:1px solid #eee;">
+            <div style="color:#333;">\${h.pageUrl ? h.pageUrl.substring(0, 50) + '...' : '未知'}</div>
+            <div style="color:#888; font-size:0.8em;">\${new Date(h.usedAt).toLocaleString()}</div>
+          </div>
+        \`).join('');
+      }
+
+      document.getElementById('quotaModal').style.display = 'flex';
+    }
+
+    function closeQuotaModal() {
+      document.getElementById('quotaModal').style.display = 'none';
+      currentEditingQuota = null;
+    }
+
+    async function addQuota(amount) {
+      if (!currentEditingQuota) return;
+      try {
+        const res = await fetch('/lurl/api/quotas/' + encodeURIComponent(currentEditingQuota.visitorId), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ addBonus: amount })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showToast('已配發 +' + amount + ' 額度', 'success');
+          await loadQuotas();
+          // 更新 modal 顯示
+          currentEditingQuota = allQuotas.find(q => q.visitorId === currentEditingQuota.visitorId);
+          if (currentEditingQuota) {
+            document.getElementById('modalCurrentQuota').textContent = \`已用 \${currentEditingQuota.usedCount} / 總額 \${currentEditingQuota.total} (剩餘 \${currentEditingQuota.remaining === Infinity ? '∞' : currentEditingQuota.remaining})\`;
+          }
+        }
+      } catch (e) {
+        showToast('配發失敗: ' + e.message, 'error');
+      }
+    }
+
+    async function setUserStatus(status) {
+      if (!currentEditingQuota) return;
+      try {
+        const res = await fetch('/lurl/api/quotas/' + encodeURIComponent(currentEditingQuota.visitorId), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          const statusText = status === 'banned' ? '已封禁' : (status === 'vip' ? '已設為 VIP' : '已恢復正常');
+          showToast(statusText, 'success');
+          await loadQuotas();
+          closeQuotaModal();
+        }
+      } catch (e) {
+        showToast('操作失敗: ' + e.message, 'error');
+      }
+    }
+
+    async function saveQuotaChanges() {
+      if (!currentEditingQuota) return;
+      const note = document.getElementById('modalNote').value;
+      try {
+        const res = await fetch('/lurl/api/quotas/' + encodeURIComponent(currentEditingQuota.visitorId), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ note })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showToast('已儲存', 'success');
+          await loadQuotas();
+          closeQuotaModal();
+        }
+      } catch (e) {
+        showToast('儲存失敗: ' + e.message, 'error');
+      }
+    }
+
+    // 點擊 modal 背景關閉
+    document.getElementById('quotaModal').addEventListener('click', function(e) {
+      if (e.target === this) closeQuotaModal();
+    });
+
     loadStats();
     loadRecords();
     loadVersionConfig();
     loadRetryStatus();
+    loadQuotas();
   </script>
 </body>
 </html>`;
@@ -2593,6 +2879,111 @@ module.exports = {
       // 公開版本只返回基本統計
       res.writeHead(200, corsHeaders());
       res.end(JSON.stringify({ totalRecords, totalVideos, totalImages }));
+      return;
+    }
+
+    // ==================== 額度管理 API ====================
+
+    // GET /api/quotas - 取得所有用戶額度列表
+    if (req.method === 'GET' && urlPath === '/api/quotas') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+        return;
+      }
+
+      const quotas = readAllQuotas().map(q => ({
+        ...q,
+        isVip: isVipVisitor(q.visitorId),
+        remaining: getRemainingQuota(q),
+        total: q.status === 'vip' || isVipVisitor(q.visitorId) ? '∞' : (q.freeQuota + (q.bonusQuota || 0))
+      }));
+
+      // 按最後使用時間排序
+      quotas.sort((a, b) => {
+        if (!a.lastUsed) return 1;
+        if (!b.lastUsed) return -1;
+        return new Date(b.lastUsed) - new Date(a.lastUsed);
+      });
+
+      res.writeHead(200, corsHeaders());
+      res.end(JSON.stringify({ ok: true, quotas }));
+      return;
+    }
+
+    // GET /api/quotas/:visitorId - 取得單一用戶詳情
+    if (req.method === 'GET' && urlPath.startsWith('/api/quotas/')) {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+        return;
+      }
+
+      const visitorId = decodeURIComponent(urlPath.replace('/api/quotas/', ''));
+      const quota = getVisitorQuota(visitorId);
+      const remaining = getRemainingQuota(quota);
+
+      res.writeHead(200, corsHeaders());
+      res.end(JSON.stringify({
+        ok: true,
+        quota: {
+          ...quota,
+          isVip: isVipVisitor(visitorId),
+          remaining,
+          total: quota.status === 'vip' || isVipVisitor(visitorId) ? '∞' : (quota.freeQuota + (quota.bonusQuota || 0))
+        }
+      }));
+      return;
+    }
+
+    // POST /api/quotas/:visitorId - 更新用戶（配發額度、禁止、備註）
+    if (req.method === 'POST' && urlPath.startsWith('/api/quotas/')) {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+        return;
+      }
+
+      try {
+        const visitorId = decodeURIComponent(urlPath.replace('/api/quotas/', ''));
+        const chunks = [];
+        for await (const chunk of req) chunks.push(chunk);
+        const body = JSON.parse(Buffer.concat(chunks).toString() || '{}');
+
+        const updates = {};
+        if (body.bonusQuota !== undefined) updates.bonusQuota = parseInt(body.bonusQuota) || 0;
+        if (body.status !== undefined && ['active', 'banned', 'vip'].includes(body.status)) {
+          updates.status = body.status;
+        }
+        if (body.note !== undefined) updates.note = String(body.note);
+        if (body.addBonus !== undefined) {
+          const current = getVisitorQuota(visitorId);
+          updates.bonusQuota = (current.bonusQuota || 0) + parseInt(body.addBonus);
+        }
+
+        const updated = updateQuota(visitorId, updates);
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ ok: true, quota: updated }));
+      } catch (err) {
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // DELETE /api/quotas/:visitorId - 刪除用戶記錄
+    if (req.method === 'DELETE' && urlPath.startsWith('/api/quotas/')) {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+        return;
+      }
+
+      const visitorId = decodeURIComponent(urlPath.replace('/api/quotas/', ''));
+      deleteQuota(visitorId);
+
+      res.writeHead(200, corsHeaders());
+      res.end(JSON.stringify({ ok: true }));
       return;
     }
 
