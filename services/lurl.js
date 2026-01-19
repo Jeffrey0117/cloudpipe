@@ -1,20 +1,51 @@
 /**
- * Lurl 影片存檔 API v2
- * 上傳到 cloudpipe 即可使用
+ * ============================================================================
+ * LurlHub - CloudPipe 子專案
+ * ============================================================================
  *
- * Phase 1 - 資料收集：
- *   POST /lurl/capture - 接收影片資料並備份
+ * 【架構說明】
+ *
+ *   CloudPipe (主平台)
+ *   ├── /_admin              ← CloudPipe 主控台（public/admin*.html）
+ *   │   └── /_admin/lurlhub  ← LurlHub 概覽（只是快捷入口，不放詳細功能）
+ *   │
+ *   └── /lurl                ← LurlHub 子專案（本檔案處理所有 /lurl/* 路由）
+ *       ├── /lurl/admin      ← LurlHub 管理後台（所有管理功能都在這）
+ *       ├── /lurl/browse     ← 公開瀏覽頁
+ *       ├── /lurl/login      ← 登入頁
+ *       └── /lurl/api/*      ← API 端點
+ *
+ * 【重要】
+ *   - LurlHub 的所有功能都應該在 /lurl/* 底下
+ *   - 使用者管理、記錄管理等都應該在 /lurl/admin 用 tab 切換
+ *   - /_admin/lurlhub 只是「概覽」，不應放詳細管理功能
+ *   - 詳見 docs/architecture.md
+ *
+ * ============================================================================
+ *
+ * 【路由總覽】
+ *
+ * 頁面：
+ *   GET  /lurl/admin   - 管理後台（含：記錄、使用者、版本、維護）
+ *   GET  /lurl/browse  - 公開瀏覽頁
+ *   GET  /lurl/login   - 登入頁
  *   GET  /lurl/health  - 健康檢查
  *
- * Phase 2 - 管理面板：
- *   GET  /lurl/admin       - 管理頁面
- *   GET  /lurl/api/records - 取得所有記錄
- *   GET  /lurl/api/stats   - 統計資料
+ * API：
+ *   POST /lurl/api/rpc         - RPC 統一入口（cb, rc, vr, bl, rd）
+ *   POST /lurl/api/capture     - 接收影片/圖片資料
+ *   POST /lurl/api/upload      - 分塊上傳
+ *   GET  /lurl/api/records     - 記錄列表
+ *   GET  /lurl/api/stats       - 統計資料
+ *   GET  /lurl/api/users       - 使用者列表
+ *   PATCH /lurl/api/users/:id  - 更新使用者
  *
- * Phase 3 - 內容展示：
- *   GET  /lurl/browse              - 瀏覽頁面
- *   GET  /lurl/files/videos/:name  - 提供影片
- *   GET  /lurl/files/images/:name  - 提供圖片
+ * 靜態檔案：
+ *   GET  /lurl/files/videos/:name      - 影片
+ *   GET  /lurl/files/images/:name      - 圖片
+ *   GET  /lurl/files/thumbnails/:name  - 縮圖
+ *
+ * ============================================================================
  */
 
 const fs = require('fs');
@@ -543,6 +574,45 @@ function adminPage() {
     .record-actions .delete-btn { color: #e53935; cursor: pointer; border: none; background: none; font-size: 0.9em; }
     .record-actions .delete-btn:hover { text-decoration: underline; }
     .empty { padding: 40px; text-align: center; color: #999; }
+    /* Main Tabs */
+    .main-tabs { display: flex; gap: 0; margin-bottom: 24px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .main-tab { padding: 14px 24px; background: transparent; border: none; cursor: pointer; font-size: 0.95em; color: #666; display: flex; align-items: center; gap: 8px; transition: all 0.2s; }
+    .main-tab:hover { background: #f5f5f5; color: #333; }
+    .main-tab.active { background: #2196F3; color: white; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Record Filter Tabs */
+    .filter-tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+    .filter-tab { padding: 10px 20px; background: white; border: none; border-radius: 8px; cursor: pointer; }
+    .filter-tab.active { background: #2196F3; color: white; }
+
+    /* User Management */
+    .user-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+    .user-stat { background: white; padding: 16px; border-radius: 8px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .user-stat .value { font-size: 1.8em; font-weight: bold; }
+    .user-stat .value.green { color: #4caf50; }
+    .user-stat .value.orange { color: #ff9800; }
+    .user-stat .value.red { color: #f44336; }
+    .user-stat .label { font-size: 0.85em; color: #666; margin-top: 4px; }
+    .user-list { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow: hidden; }
+    .user-item { display: flex; align-items: center; padding: 14px 16px; border-bottom: 1px solid #eee; gap: 12px; cursor: pointer; transition: background 0.2s; }
+    .user-item:hover { background: #f9f9f9; }
+    .user-item:last-child { border-bottom: none; }
+    .user-status-icon { font-size: 1.3em; width: 32px; text-align: center; }
+    .user-info { flex: 1; min-width: 0; }
+    .user-id { font-family: monospace; font-size: 0.85em; color: #666; }
+    .user-note { font-size: 0.75em; color: #999; margin-top: 2px; }
+    .user-quota { text-align: center; min-width: 80px; }
+    .user-quota .value { font-weight: bold; font-size: 0.95em; }
+    .user-quota .label { font-size: 0.7em; color: #888; }
+    .user-device { text-align: center; min-width: 70px; font-size: 0.85em; color: #666; }
+    .user-time { font-size: 0.8em; color: #999; min-width: 70px; text-align: right; }
+    .user-search { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; }
+    .user-search input { flex: 1; max-width: 280px; padding: 10px 14px; border: 1px solid #ddd; border-radius: 8px; font-size: 0.9em; }
+    .user-search input:focus { outline: none; border-color: #2196F3; }
+
+    /* Legacy tabs (for record filter) */
     .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
     .tab { padding: 10px 20px; background: white; border: none; border-radius: 8px; cursor: pointer; }
     .tab.active { background: #2196F3; color: white; }
@@ -613,118 +683,436 @@ function adminPage() {
   <div class="container">
     <div class="stats" id="stats"></div>
 
-    <!-- 版本管理 -->
-    <div class="version-panel">
-      <h2>📦 腳本版本管理</h2>
-      <div class="version-form">
-        <div class="form-row">
-          <div class="form-group">
-            <label>最新版本 (latestVersion)</label>
-            <input type="text" id="latestVersion" placeholder="例: 4.8">
+    <!-- 主選項卡 -->
+    <div class="main-tabs">
+      <button class="main-tab active" data-tab="records">📋 記錄</button>
+      <button class="main-tab" data-tab="users">👥 使用者</button>
+      <button class="main-tab" data-tab="version">📦 版本</button>
+      <button class="main-tab" data-tab="maintenance">🔧 維護</button>
+    </div>
+
+    <!-- 記錄 Tab -->
+    <div class="tab-content active" id="tab-records">
+      <div class="tabs">
+        <button class="tab active" data-type="all">全部</button>
+        <button class="tab" data-type="video">影片</button>
+        <button class="tab" data-type="image">圖片</button>
+      </div>
+      <div class="records" id="records"></div>
+    </div>
+
+    <!-- 使用者 Tab -->
+    <div class="tab-content" id="tab-users">
+      <div class="user-stats">
+        <div class="user-stat">
+          <div class="value" id="userTotal">-</div>
+          <div class="label">總用戶</div>
+        </div>
+        <div class="user-stat">
+          <div class="value green" id="userActive">-</div>
+          <div class="label">活躍</div>
+        </div>
+        <div class="user-stat">
+          <div class="value orange" id="userVip">-</div>
+          <div class="label">VIP</div>
+        </div>
+        <div class="user-stat">
+          <div class="value red" id="userBanned">-</div>
+          <div class="label">封禁</div>
+        </div>
+      </div>
+      <!-- 序號搜尋 -->
+      <div class="user-search">
+        <input type="text" id="userSearchInput" placeholder="🔍 輸入序號搜尋（如 V_1ABC）" maxlength="20">
+        <button class="btn btn-primary btn-sm" onclick="searchUserByCode()">搜尋</button>
+        <button class="btn btn-sm" onclick="clearUserSearch()" style="background:#e0e0e0;">清除</button>
+      </div>
+      <div class="user-list" id="userList">
+        <div class="empty">載入中...</div>
+      </div>
+    </div>
+
+    <!-- 使用者編輯 Modal -->
+    <div id="userModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+      <div style="background:white; border-radius:12px; padding:24px; max-width:450px; width:90%; max-height:80vh; overflow-y:auto;">
+        <h3 style="margin:0 0 20px 0;">👤 管理用戶</h3>
+        <div style="margin-bottom:15px;">
+          <label style="font-size:0.85em; color:#666;">用戶 ID</label>
+          <div id="modalUserId" style="font-family:monospace; background:#f5f5f5; padding:8px; border-radius:4px; word-break:break-all; font-size:0.85em;"></div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:15px;">
+          <div style="background:#f9f9f9; padding:12px; border-radius:8px;">
+            <div style="font-size:0.75em; color:#888;">額度狀態</div>
+            <div id="modalQuotaInfo" style="font-size:1.1em; font-weight:bold; margin-top:4px;">-</div>
           </div>
-          <div class="form-group">
-            <label>最低版本 (minVersion) - 低於此版本強制更新</label>
-            <input type="text" id="minVersion" placeholder="例: 4.0.0">
+          <div style="background:#f9f9f9; padding:12px; border-radius:8px;">
+            <div style="font-size:0.75em; color:#888;">設備資訊</div>
+            <div id="modalDeviceInfo" style="font-size:0.9em; margin-top:4px;">-</div>
           </div>
         </div>
-        <div class="form-group">
-          <label>更新訊息 (message)</label>
-          <input type="text" id="versionMessage" placeholder="例: 新增功能、修復問題等">
+        <div style="margin-bottom:15px;">
+          <label style="font-size:0.85em; color:#666;">備註</label>
+          <input type="text" id="modalNote" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;" placeholder="添加備註...">
         </div>
-        <div class="form-group">
-          <label>公告 (announcement) - 可選</label>
-          <textarea id="announcement" placeholder="額外公告訊息..."></textarea>
+        <div style="margin-bottom:15px;">
+          <label style="font-size:0.85em; color:#666;">配發額度</label>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" onclick="addUserQuota(5)">+5</button>
+            <button class="btn btn-primary btn-sm" onclick="addUserQuota(10)">+10</button>
+            <button class="btn btn-primary btn-sm" onclick="addUserQuota(20)">+20</button>
+            <button class="btn btn-primary btn-sm" onclick="addUserQuota(50)">+50</button>
+          </div>
         </div>
-        <div class="form-group">
-          <label>更新連結 (updateUrl)</label>
-          <input type="text" id="updateUrl" placeholder="GitHub raw URL">
+        <div style="margin-bottom:15px;">
+          <label style="font-size:0.85em; color:#666;">狀態操作</label>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+            <button class="btn btn-sm" style="background:#4caf50; color:white;" onclick="setUserStatus('active')">✅ 正常</button>
+            <button class="btn btn-sm" style="background:#ff9800; color:white;" onclick="setUserStatus('vip')">⭐ VIP</button>
+            <button class="btn btn-sm" style="background:#f44336; color:white;" onclick="setUserStatus('banned')">🚫 封禁</button>
+          </div>
         </div>
-        <div class="form-group checkbox">
-          <input type="checkbox" id="forceUpdate">
-          <label for="forceUpdate">強制更新 (forceUpdate) - 所有舊版本必須更新</label>
+        <div style="margin-bottom:15px;">
+          <label style="font-size:0.85em; color:#666;">使用歷史 (最近 5 筆)</label>
+          <div id="modalHistory" style="font-size:0.85em; background:#f9f9f9; padding:10px; border-radius:4px; max-height:120px; overflow-y:auto;"></div>
         </div>
-        <div class="form-actions">
-          <button class="btn btn-primary" onclick="saveVersionConfig()">💾 儲存設定</button>
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+          <button class="btn" style="background:#e0e0e0;" onclick="closeUserModal()">關閉</button>
+          <button class="btn btn-primary" onclick="saveUserChanges()">儲存</button>
         </div>
       </div>
     </div>
 
-    <!-- 資料維護 -->
-    <div class="version-panel" style="margin-top: 20px;">
-      <h2>🔧 資料維護</h2>
-      <div class="maintenance-list">
-        <div class="maintenance-item">
-          <div class="maintenance-icon">🔧</div>
-          <div class="maintenance-info">
-            <div class="maintenance-label">修復 Untitled</div>
-            <div class="maintenance-desc">重新抓取缺少標題的記錄</div>
+    <!-- 版本 Tab -->
+    <div class="tab-content" id="tab-version">
+      <div class="version-panel" style="margin-bottom:0;">
+        <h2>📦 腳本版本管理</h2>
+        <div class="version-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label>最新版本 (latestVersion)</label>
+              <input type="text" id="latestVersion" placeholder="例: 4.8">
+            </div>
+            <div class="form-group">
+              <label>最低版本 (minVersion) - 低於此版本強制更新</label>
+              <input type="text" id="minVersion" placeholder="例: 4.0.0">
+            </div>
           </div>
-          <div class="maintenance-status" id="untitledStatus">就緒</div>
-          <button class="btn btn-primary btn-sm" onclick="fixUntitled()">執行</button>
-        </div>
-        <div class="maintenance-item">
-          <div class="maintenance-icon">🔄</div>
-          <div class="maintenance-info">
-            <div class="maintenance-label">重試下載</div>
-            <div class="maintenance-desc">用 Puppeteer 重新下載失敗的檔案</div>
+          <div class="form-group">
+            <label>更新訊息 (message)</label>
+            <input type="text" id="versionMessage" placeholder="例: 新增功能、修復問題等">
           </div>
-          <div class="maintenance-status" id="retryStatus">就緒</div>
-          <button class="btn btn-primary btn-sm" onclick="retryFailed()" id="retryBtn">執行</button>
-        </div>
-        <div class="maintenance-item">
-          <div class="maintenance-icon">🖼️</div>
-          <div class="maintenance-info">
-            <div class="maintenance-label">產生縮圖</div>
-            <div class="maintenance-desc">為沒有縮圖的影片產生預覽圖</div>
+          <div class="form-group">
+            <label>公告 (announcement) - 可選</label>
+            <textarea id="announcement" placeholder="額外公告訊息..."></textarea>
           </div>
-          <div class="maintenance-status" id="thumbStatus">就緒</div>
-          <button class="btn btn-primary btn-sm" onclick="generateThumbnails()" id="thumbBtn">執行</button>
-        </div>
-        <div class="maintenance-item">
-          <div class="maintenance-icon">🗑️</div>
-          <div class="maintenance-info">
-            <div class="maintenance-label">清理重複</div>
-            <div class="maintenance-desc">移除重複的 pageUrl/fileUrl 記錄</div>
+          <div class="form-group">
+            <label>更新連結 (updateUrl)</label>
+            <input type="text" id="updateUrl" placeholder="GitHub raw URL">
           </div>
-          <div class="maintenance-status" id="dupStatus">就緒</div>
-          <button class="btn btn-primary btn-sm" onclick="cleanupDuplicates()" id="dupBtn">執行</button>
-        </div>
-        <div class="maintenance-item">
-          <div class="maintenance-icon">📁</div>
-          <div class="maintenance-info">
-            <div class="maintenance-label">修復路徑</div>
-            <div class="maintenance-desc">修正指向同一檔案的記錄</div>
+          <div class="form-group checkbox">
+            <input type="checkbox" id="forceUpdate">
+            <label for="forceUpdate">強制更新 (forceUpdate) - 所有舊版本必須更新</label>
           </div>
-          <div class="maintenance-status" id="repairStatus">就緒</div>
-          <button class="btn btn-primary btn-sm" onclick="repairPaths()" id="repairBtn">執行</button>
+          <div class="form-actions">
+            <button class="btn btn-primary" onclick="saveVersionConfig()">💾 儲存設定</button>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- 使用者管理連結 -->
-    <div class="version-panel" style="margin-top: 20px;">
-      <a href="/_admin/users" style="display:flex; align-items:center; justify-content:space-between; text-decoration:none; color:inherit;">
-        <div style="display:flex; align-items:center; gap:12px;">
-          <span style="font-size:1.5em;">👥</span>
-          <div>
-            <h2 style="margin:0; font-size:1.1em;">使用者管理</h2>
-            <p style="margin:4px 0 0 0; font-size:0.85em; color:#666;">額度、設備資訊、貢獻統計</p>
+    <!-- 維護 Tab -->
+    <div class="tab-content" id="tab-maintenance">
+      <div class="version-panel" style="margin-bottom:0;">
+        <h2>🔧 資料維護</h2>
+        <div class="maintenance-list">
+          <div class="maintenance-item">
+            <div class="maintenance-icon">🔧</div>
+            <div class="maintenance-info">
+              <div class="maintenance-label">修復 Untitled</div>
+              <div class="maintenance-desc">重新抓取缺少標題的記錄</div>
+            </div>
+            <div class="maintenance-status" id="untitledStatus">就緒</div>
+            <button class="btn btn-primary btn-sm" onclick="fixUntitled()">執行</button>
+          </div>
+          <div class="maintenance-item">
+            <div class="maintenance-icon">🔄</div>
+            <div class="maintenance-info">
+              <div class="maintenance-label">重試下載</div>
+              <div class="maintenance-desc">用 Puppeteer 重新下載失敗的檔案</div>
+            </div>
+            <div class="maintenance-status" id="retryStatus">就緒</div>
+            <button class="btn btn-primary btn-sm" onclick="retryFailed()" id="retryBtn">執行</button>
+          </div>
+          <div class="maintenance-item">
+            <div class="maintenance-icon">🖼️</div>
+            <div class="maintenance-info">
+              <div class="maintenance-label">產生縮圖</div>
+              <div class="maintenance-desc">為沒有縮圖的影片產生預覽圖</div>
+            </div>
+            <div class="maintenance-status" id="thumbStatus">就緒</div>
+            <button class="btn btn-primary btn-sm" onclick="generateThumbnails()" id="thumbBtn">執行</button>
+          </div>
+          <div class="maintenance-item">
+            <div class="maintenance-icon">🗑️</div>
+            <div class="maintenance-info">
+              <div class="maintenance-label">清理重複</div>
+              <div class="maintenance-desc">移除重複的 pageUrl/fileUrl 記錄</div>
+            </div>
+            <div class="maintenance-status" id="dupStatus">就緒</div>
+            <button class="btn btn-primary btn-sm" onclick="cleanupDuplicates()" id="dupBtn">執行</button>
+          </div>
+          <div class="maintenance-item">
+            <div class="maintenance-icon">📁</div>
+            <div class="maintenance-info">
+              <div class="maintenance-label">修復路徑</div>
+              <div class="maintenance-desc">修正指向同一檔案的記錄</div>
+            </div>
+            <div class="maintenance-status" id="repairStatus">就緒</div>
+            <button class="btn btn-primary btn-sm" onclick="repairPaths()" id="repairBtn">執行</button>
           </div>
         </div>
-        <span style="font-size:1.2em; color:#888;">→</span>
-      </a>
+      </div>
     </div>
-
-    <div class="tabs">
-      <button class="tab active" data-type="all">全部</button>
-      <button class="tab" data-type="video">影片</button>
-      <button class="tab" data-type="image">圖片</button>
-    </div>
-    <div class="records" id="records"></div>
   </div>
   <script>
     let allRecords = [];
     let currentType = 'all';
+    let allUsers = [];
+    let currentUser = null;
+
+    // ===== 主 Tab 切換 =====
+    document.querySelectorAll('.main-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const targetTab = tab.dataset.tab;
+        switchMainTab(targetTab);
+      });
+    });
+
+    function switchMainTab(tabName) {
+      // 更新 tab 樣式
+      document.querySelectorAll('.main-tab').forEach(t => t.classList.remove('active'));
+      document.querySelector(\`.main-tab[data-tab="\${tabName}"]\`).classList.add('active');
+
+      // 顯示對應內容
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      document.getElementById('tab-' + tabName).classList.add('active');
+
+      // 更新 URL hash
+      history.replaceState(null, '', '#' + tabName);
+
+      // 載入資料
+      if (tabName === 'users') loadUsers();
+    }
+
+    // 根據 URL hash 切換 tab
+    function checkHashAndSwitch() {
+      const hash = window.location.hash.replace('#', '') || 'records';
+      if (['records', 'users', 'version', 'maintenance'].includes(hash)) {
+        switchMainTab(hash);
+      }
+    }
+    window.addEventListener('hashchange', checkHashAndSwitch);
+
+    // ===== 使用者管理 =====
+    async function loadUsers() {
+      try {
+        const res = await fetch('/lurl/api/users');
+        const data = await res.json();
+        if (data.ok) {
+          allUsers = data.users;
+          renderUserStats();
+          renderUserList();
+        }
+      } catch (e) {
+        document.getElementById('userList').innerHTML = '<div class="empty">載入失敗</div>';
+      }
+    }
+
+    function renderUserStats() {
+      const total = allUsers.length;
+      const active = allUsers.filter(u => u.status === 'active').length;
+      const vip = allUsers.filter(u => u.status === 'vip' || u.isVip).length;
+      const banned = allUsers.filter(u => u.status === 'banned').length;
+
+      document.getElementById('userTotal').textContent = total;
+      document.getElementById('userActive').textContent = active;
+      document.getElementById('userVip').textContent = vip;
+      document.getElementById('userBanned').textContent = banned;
+    }
+
+    function renderUserList() {
+      if (allUsers.length === 0) {
+        document.getElementById('userList').innerHTML = '<div class="empty">尚無用戶</div>';
+        return;
+      }
+
+      // 根據搜尋過濾
+      let filtered = allUsers;
+      if (searchQuery) {
+        filtered = allUsers.filter(u => u.visitorId.toUpperCase().startsWith(searchQuery));
+      }
+
+      if (filtered.length === 0) {
+        document.getElementById('userList').innerHTML = '<div class="empty">找不到符合「' + searchQuery + '」的用戶</div>';
+        return;
+      }
+
+      const html = filtered.map(u => {
+        const statusIcon = u.status === 'banned' ? '🔴' : (u.status === 'vip' || u.isVip ? '⭐' : '🟢');
+        const remaining = u.remaining === -1 ? '∞' : u.remaining;
+        const remainingColor = u.remaining === -1 ? 'color:#ff9800' : (u.remaining <= 0 ? 'color:#f44336' : 'color:#4caf50');
+        const lastSeen = u.device?.lastSeen ? timeAgo(u.device.lastSeen) : '-';
+        const network = u.device?.network?.type?.toUpperCase() || '-';
+        // 顯示序號（前6位大寫）方便核對
+        const shortCode = u.visitorId.substring(0, 6).toUpperCase();
+
+        return \`<div class="user-item" onclick="openUserModal('\${u.visitorId}')">
+          <div class="user-status-icon">\${statusIcon}</div>
+          <div class="user-info">
+            <div class="user-id"><span style="background:#e3f2fd;padding:2px 6px;border-radius:4px;font-weight:bold;color:#1976d2;">\${shortCode}</span> \${u.visitorId.substring(6, 20)}...</div>
+            <div class="user-note">\${u.note || '無備註'}</div>
+          </div>
+          <div class="user-quota">
+            <div class="value" style="\${remainingColor}">\${u.usedCount}/\${u.total}</div>
+            <div class="label">已用/總額</div>
+          </div>
+          <div class="user-device">\${network}</div>
+          <div class="user-time">\${lastSeen}</div>
+        </div>\`;
+      }).join('');
+
+      document.getElementById('userList').innerHTML = html;
+    }
+
+    // 序號搜尋
+    let searchQuery = '';
+    function searchUserByCode() {
+      const input = document.getElementById('userSearchInput').value.trim().toUpperCase();
+      if (!input) return;
+      searchQuery = input;
+      renderUserList();
+    }
+
+    function clearUserSearch() {
+      searchQuery = '';
+      document.getElementById('userSearchInput').value = '';
+      renderUserList();
+    }
+
+    // Enter 搜尋
+    document.getElementById('userSearchInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') searchUserByCode();
+    });
+
+    function openUserModal(visitorId) {
+      currentUser = allUsers.find(u => u.visitorId === visitorId);
+      if (!currentUser) return;
+
+      const u = currentUser;
+      document.getElementById('modalUserId').textContent = u.visitorId;
+
+      // 額度資訊
+      const remaining = u.remaining === -1 ? '∞' : u.remaining;
+      const statusText = u.status === 'banned' ? '🔴封禁' : (u.status === 'vip' || u.isVip ? '⭐VIP' : '🟢正常');
+      document.getElementById('modalQuotaInfo').innerHTML = \`\${statusText}<br><span style="font-size:0.8em;color:#666;">\${u.usedCount}/\${u.total} (剩:\${remaining})</span>\`;
+
+      // 設備資訊
+      const network = u.device?.network?.type?.toUpperCase() || '-';
+      const speed = u.device?.network?.downlink ? \`\${u.device.network.downlink}Mbps\` : '';
+      document.getElementById('modalDeviceInfo').innerHTML = \`\${network} \${speed}\`;
+
+      document.getElementById('modalNote').value = u.note || '';
+
+      // 歷史
+      const history = (u.history || []).slice(-5).reverse();
+      if (history.length === 0) {
+        document.getElementById('modalHistory').innerHTML = '<div style="color:#999;">無使用記錄</div>';
+      } else {
+        document.getElementById('modalHistory').innerHTML = history.map(h => \`
+          <div style="padding:4px 0; border-bottom:1px solid #eee;">
+            <div style="color:#333; font-size:0.85em;">\${h.pageUrl ? h.pageUrl.substring(0, 40) + '...' : '未知'}</div>
+            <div style="color:#888; font-size:0.75em;">\${new Date(h.usedAt).toLocaleString()}</div>
+          </div>
+        \`).join('');
+      }
+
+      document.getElementById('userModal').style.display = 'flex';
+    }
+
+    function closeUserModal() {
+      document.getElementById('userModal').style.display = 'none';
+      currentUser = null;
+    }
+
+    async function addUserQuota(amount) {
+      if (!currentUser) return;
+      try {
+        const res = await fetch('/lurl/api/users/' + encodeURIComponent(currentUser.visitorId), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ addBonus: amount })
+        });
+        if ((await res.json()).ok) {
+          showToast('已配發 +' + amount + ' 額度', 'success');
+          await loadUsers();
+          currentUser = allUsers.find(u => u.visitorId === currentUser.visitorId);
+          if (currentUser) openUserModal(currentUser.visitorId);
+        }
+      } catch (e) {
+        showToast('配發失敗', 'error');
+      }
+    }
+
+    async function setUserStatus(status) {
+      if (!currentUser) return;
+      try {
+        const res = await fetch('/lurl/api/users/' + encodeURIComponent(currentUser.visitorId), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status })
+        });
+        if ((await res.json()).ok) {
+          const statusText = status === 'banned' ? '已封禁' : (status === 'vip' ? '已設為 VIP' : '已恢復正常');
+          showToast(statusText, 'success');
+          await loadUsers();
+          closeUserModal();
+        }
+      } catch (e) {
+        showToast('操作失敗', 'error');
+      }
+    }
+
+    async function saveUserChanges() {
+      if (!currentUser) return;
+      const note = document.getElementById('modalNote').value;
+      try {
+        const res = await fetch('/lurl/api/users/' + encodeURIComponent(currentUser.visitorId), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ note })
+        });
+        if ((await res.json()).ok) {
+          showToast('已儲存', 'success');
+          await loadUsers();
+          closeUserModal();
+        }
+      } catch (e) {
+        showToast('儲存失敗', 'error');
+      }
+    }
+
+    // Modal 背景點擊關閉
+    document.getElementById('userModal').addEventListener('click', function(e) {
+      if (e.target === this) closeUserModal();
+    });
+
+    function timeAgo(timestamp) {
+      const seconds = Math.floor((Date.now() - timestamp) / 1000);
+      if (seconds < 60) return '剛剛';
+      if (seconds < 3600) return Math.floor(seconds / 60) + '分鐘前';
+      if (seconds < 86400) return Math.floor(seconds / 3600) + '小時前';
+      return Math.floor(seconds / 86400) + '天前';
+    }
 
     // 設定維護狀態的 helper
     function setStatus(id, text, type = '') {
@@ -1006,10 +1394,43 @@ function adminPage() {
       }
     }
 
+    // ===== 滾動位置記憶 =====
+    const SCROLL_KEY = 'lurlAdminScroll';
+
+    function saveScrollPosition() {
+      const currentTab = location.hash.replace('#', '') || 'records';
+      sessionStorage.setItem(SCROLL_KEY, JSON.stringify({
+        tab: currentTab,
+        scrollY: window.scrollY
+      }));
+    }
+
+    function restoreScrollPosition() {
+      try {
+        const saved = JSON.parse(sessionStorage.getItem(SCROLL_KEY) || '{}');
+        const currentTab = location.hash.replace('#', '') || 'records';
+        // 只有在同一個 tab 才恢復滾動位置
+        if (saved.tab === currentTab && saved.scrollY) {
+          setTimeout(() => window.scrollTo(0, saved.scrollY), 50);
+        }
+      } catch (e) {}
+    }
+
+    // 離開頁面時記錄
+    window.addEventListener('beforeunload', saveScrollPosition);
+    // 點擊連結時也記錄（以防 beforeunload 不觸發）
+    document.addEventListener('click', (e) => {
+      const link = e.target.closest('a[href]');
+      if (link && !link.href.includes('#')) saveScrollPosition();
+    });
+
+    // 初始化
     loadStats();
     loadRecords();
     loadVersionConfig();
     loadRetryStatus();
+    checkHashAndSwitch();
+    restoreScrollPosition();
   </script>
 </body>
 </html>`;

@@ -136,21 +136,6 @@
     .deployed-item a.btn.admin:hover { background: #2a4a7f; color: #fff; }
     .empty { text-align: center; color: #555; padding: 2rem; }
 
-    /* Optimize Buttons */
-    .opt-btn {
-      background: #1e3a5f;
-      border: none;
-      color: #8ab4f8;
-      padding: 0.75rem 1.25rem;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 0.9rem;
-      transition: all 0.2s;
-    }
-    .opt-btn:hover:not(:disabled) { background: #2a4a7f; color: #fff; }
-    .opt-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .opt-btn.running { background: #14532d; color: #4ade80; }
-
     @media (max-width: 600px) {
       .info-grid { grid-template-columns: 1fr; }
       .services-grid { grid-template-columns: 1fr; }
@@ -204,43 +189,6 @@
       </div>
     </section>
 
-    <!-- 媒體優化 -->
-    <section class="optimize-section" style="margin-bottom: 2.5rem;">
-      <h3 class="section-title">媒體優化</h3>
-      <div class="info-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 1rem;">
-        <div class="info-card">
-          <div class="info-label">圖片數量</div>
-          <div class="info-value" id="optTotalImages">--</div>
-        </div>
-        <div class="info-card">
-          <div class="info-label">影片數量</div>
-          <div class="info-value" id="optTotalVideos">--</div>
-        </div>
-        <div class="info-card">
-          <div class="info-label">缺少縮圖</div>
-          <div class="info-value" id="optMissingThumbs" style="color: #f87171;">--</div>
-        </div>
-        <div class="info-card">
-          <div class="info-label">非 WebP 圖片</div>
-          <div class="info-value" id="optNonWebp" style="color: #fbbf24;">--</div>
-        </div>
-      </div>
-      <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-        <button onclick="runOptimize('thumbnails')" id="btnOptThumb" class="opt-btn" disabled>
-          🖼️ 生成缺少的縮圖
-        </button>
-        <button onclick="runOptimize('webp')" id="btnOptWebp" class="opt-btn" disabled>
-          📦 圖片轉 WebP
-        </button>
-        <button onclick="runOptimize('both')" id="btnOptBoth" class="opt-btn" disabled>
-          ⚡ 全部優化
-        </button>
-      </div>
-      <div id="optResult" style="margin-top: 1rem; padding: 1rem; background: #151515; border-radius: 8px; display: none;">
-        <div id="optResultText"></div>
-      </div>
-    </section>
-
     <!-- 已部署 -->
     <section class="deployed">
       <h3 class="section-title">已部署</h3>
@@ -267,76 +215,8 @@
       await Promise.all([
         loadLurlStats(),
         loadSystemInfo(),
-        loadDeployed(),
-        loadOptimizeStatus()
+        loadDeployed()
       ]);
-    }
-
-    // 載入優化狀態
-    async function loadOptimizeStatus() {
-      try {
-        const res = await fetch('/lurl/api/optimize/status', {
-          headers: { 'cookie': document.cookie }
-        });
-        const data = await res.json();
-        if (data.ok) {
-          document.getElementById('optTotalImages').textContent = data.totalImages;
-          document.getElementById('optTotalVideos').textContent = data.totalVideos;
-          document.getElementById('optMissingThumbs').textContent = data.missingThumbnails;
-          document.getElementById('optMissingThumbs').style.color = data.missingThumbnails > 0 ? '#f87171' : '#4ade80';
-          document.getElementById('optNonWebp').textContent = data.nonWebpImages;
-          document.getElementById('optNonWebp').style.color = data.nonWebpImages > 0 ? '#fbbf24' : '#4ade80';
-
-          // 啟用按鈕
-          document.getElementById('btnOptThumb').disabled = data.missingThumbnails === 0;
-          document.getElementById('btnOptWebp').disabled = data.nonWebpImages === 0;
-          document.getElementById('btnOptBoth').disabled = !data.canOptimize;
-        }
-      } catch (e) {
-        console.error('載入優化狀態失敗', e);
-      }
-    }
-
-    // 執行優化
-    async function runOptimize(mode) {
-      const btn = document.getElementById(mode === 'thumbnails' ? 'btnOptThumb' : mode === 'webp' ? 'btnOptWebp' : 'btnOptBoth');
-      const resultDiv = document.getElementById('optResult');
-      const resultText = document.getElementById('optResultText');
-
-      btn.disabled = true;
-      btn.classList.add('running');
-      btn.textContent = '處理中...';
-      resultDiv.style.display = 'block';
-      resultText.innerHTML = '<span style="color:#fbbf24">⏳ 正在處理，請稍候...</span>';
-
-      try {
-        const res = await fetch('/lurl/api/optimize', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode })
-        });
-        const data = await res.json();
-
-        if (data.ok) {
-          resultText.innerHTML = `
-            <span style="color:#4ade80">✅ 優化完成</span><br>
-            <span style="color:#888">處理: ${data.processed} | 跳過: ${data.skipped} | 失敗: ${data.failed}</span>
-          `;
-          // 重新載入狀態
-          await loadOptimizeStatus();
-        } else {
-          resultText.innerHTML = `<span style="color:#f87171">❌ 錯誤: ${data.error}</span>`;
-        }
-      } catch (e) {
-        resultText.innerHTML = `<span style="color:#f87171">❌ 請求失敗: ${e.message}</span>`;
-      }
-
-      btn.classList.remove('running');
-      // 恢復按鈕文字
-      if (mode === 'thumbnails') btn.textContent = '🖼️ 生成缺少的縮圖';
-      else if (mode === 'webp') btn.textContent = '📦 圖片轉 WebP';
-      else btn.textContent = '⚡ 全部優化';
-      // 重新載入狀態會更新按鈕狀態
     }
 
     // 載入 LurlHub 統計
