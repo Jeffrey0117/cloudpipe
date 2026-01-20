@@ -22,6 +22,9 @@ const CLOUDPIPE_ROOT = path.join(__dirname, '../..');
 const CLOUDFLARED = 'C:\\Users\\jeffb\\cloudflared.exe';
 const TUNNEL_ID = 'afd11345-c75a-4d62-aa67-0a389d82ce74';
 
+// Port 分配設定
+const BASE_PORT = 4000;  // 起始 port
+
 // ==================== 資料存取 ====================
 
 function readProjects() {
@@ -48,6 +51,20 @@ function writeDeployments(deployments) {
   fs.writeFileSync(DEPLOYMENTS_FILE, JSON.stringify({ deployments }, null, 2));
 }
 
+// 取得下一個可用 port
+function getNextAvailablePort() {
+  const projects = readProjects();
+  const usedPorts = projects
+    .filter(p => p.port)
+    .map(p => p.port);
+
+  if (usedPorts.length === 0) {
+    return BASE_PORT + 1;  // 4001
+  }
+
+  return Math.max(...usedPorts) + 1;
+}
+
 // ==================== 專案管理 ====================
 
 function getProject(id) {
@@ -66,15 +83,21 @@ function createProject(data) {
     throw new Error(`專案 ID "${data.id}" 已存在`);
   }
 
+  // Git 部署的專案自動分配 port
+  const deployMethod = data.deployMethod || 'manual';
+  const isGitDeploy = deployMethod === 'github' || deployMethod === 'git-url';
+  const autoPort = isGitDeploy ? getNextAvailablePort() : null;
+
   const project = {
     id: data.id,
     name: data.name || data.id,
     description: data.description || '',
-    deployMethod: data.deployMethod || 'manual', // github | git-url | upload | manual
+    deployMethod,
     repoUrl: data.repoUrl || '',
     branch: data.branch || 'main',
     directory: data.directory || `projects/${data.id}`,
     entryFile: data.entryFile || 'index.js',
+    port: data.port || autoPort,  // 自動分配或手動指定
     pm2Name: data.pm2Name || data.id,
     webhookSecret: data.webhookSecret || crypto.randomBytes(20).toString('hex'),
     envFile: data.envFile || '',
@@ -210,6 +233,17 @@ async function deploy(projectId, options = {}) {
       log(`Commit: ${commitHash} - ${commitMessage}`);
     }
 
+    // 自動安裝依賴（如果有 package.json）
+    const pkgPath = path.join(projectDir, 'package.json');
+    if (fs.existsSync(pkgPath)) {
+      const nodeModulesPath = path.join(projectDir, 'node_modules');
+      if (!fs.existsSync(nodeModulesPath)) {
+        log(`偵測到 package.json，執行 npm install...`);
+        execSync('npm install', { cwd: projectDir, stdio: 'pipe' });
+        log(`依賴安裝完成`);
+      }
+    }
+
     // 執行 build command
     if (project.buildCommand) {
       log(`執行 build: ${project.buildCommand}`);
@@ -219,7 +253,6 @@ async function deploy(projectId, options = {}) {
 
     // 自動偵測入口檔案
     let entryFile = project.entryFile;
-    const pkgPath = path.join(projectDir, 'package.json');
     if (fs.existsSync(pkgPath)) {
       try {
         const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
@@ -255,17 +288,30 @@ async function deploy(projectId, options = {}) {
         throw new Error(`入口檔案不存在: ${entryFile}`);
       }
       log(`重啟 PM2: ${project.pm2Name}`);
-      const portEnv = project.port ? `PORT=${project.port}` : '';
+
+      // 準備環境變數
+      const pm2Env = project.port ? { PORT: String(project.port) } : {};
+
       try {
+        // 嘗試重啟（如果已存在）
         execSync(`pm2 reload ${project.pm2Name}`, { stdio: 'pipe' });
         log(`PM2 重啟完成`);
       } catch (e) {
         log(`PM2 重啟失敗，嘗試啟動...`);
-        // 啟動時帶入 PORT 環境變數
-        const startCmd = portEnv
-          ? `cross-env ${portEnv} pm2 start ${entryPath} --name ${project.pm2Name}`
-          : `pm2 start ${entryPath} --name ${project.pm2Name}`;
-        execSync(startCmd, { stdio: 'pipe', cwd: projectDir });
+        // 先刪除舊的（如果有）
+        try {
+          execSync(`pm2 delete ${project.pm2Name}`, { stdio: 'pipe' });
+        } catch (delErr) {
+          // 忽略刪除錯誤
+        }
+        // 使用 spawn 啟動 PM2，正確傳遞環境變數
+        const pm2Args = ['start', entryPath, '--name', project.pm2Name];
+        const spawnEnv = { ...process.env, ...pm2Env };
+        execSync(`pm2 start "${entryPath}" --name ${project.pm2Name}`, {
+          stdio: 'pipe',
+          cwd: projectDir,
+          env: spawnEnv
+        });
         log(`PM2 啟動完成 (port: ${project.port || 'default'})`);
       }
     }
