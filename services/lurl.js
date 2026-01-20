@@ -751,9 +751,13 @@ function adminPage() {
             <div id="modalQuotaInfo" style="font-size:1.1em; font-weight:bold; margin-top:4px;">-</div>
           </div>
           <div style="background:#f9f9f9; padding:12px; border-radius:8px;">
-            <div style="font-size:0.75em; color:#888;">設備資訊</div>
-            <div id="modalDeviceInfo" style="font-size:0.9em; margin-top:4px;">-</div>
+            <div style="font-size:0.75em; color:#888;">最後上線</div>
+            <div id="modalLastSeen" style="font-size:0.9em; margin-top:4px;">-</div>
           </div>
+        </div>
+        <div style="background:#f9f9f9; padding:12px; border-radius:8px; margin-bottom:15px;">
+          <div style="font-size:0.75em; color:#888; margin-bottom:8px;">設備資訊</div>
+          <div id="modalDeviceInfo" style="font-size:0.85em; display:grid; grid-template-columns:1fr 1fr; gap:6px;">-</div>
         </div>
         <div style="margin-bottom:15px;">
           <label style="font-size:0.85em; color:#666;">備註</label>
@@ -1021,10 +1025,37 @@ function adminPage() {
       const statusText = u.status === 'banned' ? '🔴封禁' : (u.status === 'vip' || u.isVip ? '⭐VIP' : '🟢正常');
       document.getElementById('modalQuotaInfo').innerHTML = \`\${statusText}<br><span style="font-size:0.8em;color:#666;">\${u.usedCount}/\${u.total} (剩:\${remaining})</span>\`;
 
-      // 設備資訊
-      const network = u.device?.network?.type?.toUpperCase() || '-';
-      const speed = u.device?.network?.downlink ? \`\${u.device.network.downlink}Mbps\` : '';
-      document.getElementById('modalDeviceInfo').innerHTML = \`\${network} \${speed}\`;
+      // 最後上線
+      const lastSeen = u.device?.lastSeen ? new Date(u.device.lastSeen).toLocaleString() : (u.lastActive ? new Date(u.lastActive).toLocaleString() : '-');
+      document.getElementById('modalLastSeen').textContent = lastSeen;
+
+      // 設備資訊 (grid layout)
+      const d = u.device || {};
+      const deviceItems = [];
+
+      // 網路
+      if (d.network?.type) deviceItems.push({ label: '網路', value: d.network.type.toUpperCase() });
+      if (d.network?.downlink) deviceItems.push({ label: '頻寬', value: d.network.downlink + ' Mbps' });
+      if (d.network?.rtt) deviceItems.push({ label: '延遲', value: d.network.rtt + ' ms' });
+
+      // 硬體
+      if (d.hardware?.cores) deviceItems.push({ label: 'CPU', value: d.hardware.cores + ' 核心' });
+      if (d.hardware?.memory) deviceItems.push({ label: '記憶體', value: d.hardware.memory + ' GB' });
+
+      // 電池
+      if (d.battery?.level != null) {
+        const batteryPct = Math.round(d.battery.level * 100);
+        const charging = d.battery.charging ? '⚡' : '';
+        deviceItems.push({ label: '電量', value: batteryPct + '%' + charging });
+      }
+
+      if (deviceItems.length === 0) {
+        document.getElementById('modalDeviceInfo').innerHTML = '<span style="color:#999;">無設備資訊</span>';
+      } else {
+        document.getElementById('modalDeviceInfo').innerHTML = deviceItems.map(item =>
+          \`<div><span style="color:#888;">\${item.label}:</span> \${item.value}</div>\`
+        ).join('');
+      }
 
       document.getElementById('modalNote').value = u.note || '';
 
@@ -1629,6 +1660,101 @@ function browsePage() {
     .card-tags .tag:hover { background: #333; color: #ccc; border-color: #444; }
     .card-tags .tag.active { background: #ec4899; color: white; border-color: #ec4899; }
 
+    .tag-group { display: inline-flex; align-items: center; position: relative; }
+    .tag-expand {
+      font-size: 0.6em;
+      cursor: pointer;
+      padding: 2px 4px;
+      color: #888;
+      margin-left: -4px;
+    }
+    .tag-expand:hover { color: #ec4899; }
+    .tag-popover {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 8px;
+      z-index: 100;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      min-width: 120px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+    .tag-popover .tag.sub {
+      font-size: 0.75em;
+      padding: 4px 8px;
+      background: #2a2a2a;
+    }
+    .tag-popover .tag.sub.active { background: #be185d; border-color: #be185d; }
+
+    /* Tag filter bar */
+    .tag-filter {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 16px;
+      padding: 12px;
+      background: #1a1a1a;
+      border-radius: 8px;
+    }
+    .tag-filter .filter-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .tag-filter .filter-tag {
+      padding: 6px 12px;
+      border-radius: 16px;
+      font-size: 0.85em;
+      cursor: pointer;
+      background: #2a2a2a;
+      color: #888;
+      border: 1px solid #333;
+      transition: all 0.2s;
+    }
+    .tag-filter .filter-tag:hover { background: #333; color: #ccc; }
+    .tag-filter .filter-tag.active { background: #ec4899; color: white; border-color: #ec4899; }
+    .tag-filter .filter-popover {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 8px;
+      z-index: 100;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-width: 140px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+    .tag-filter .filter-sub {
+      padding: 6px 12px;
+      font-size: 0.8em;
+      background: #2a2a2a;
+      border: 1px solid #333;
+      border-radius: 16px;
+      cursor: pointer;
+      color: #888;
+    }
+    .tag-filter .filter-sub:hover { background: #333; }
+    .tag-filter .filter-sub.active { background: #be185d; border-color: #be185d; color: white; }
+    .tag-filter .clear-filter {
+      padding: 6px 12px;
+      background: #333;
+      color: #888;
+      border: none;
+      border-radius: 16px;
+      cursor: pointer;
+      font-size: 0.85em;
+    }
+    .tag-filter .clear-filter:hover { background: #444; color: #fff; }
+
     /* ===== RWD 響應式設計 ===== */
 
     /* Tablet (768px - 1023px) */
@@ -1724,6 +1850,7 @@ function browsePage() {
       </div>
       <div class="result-count" id="resultCount"></div>
     </div>
+    <div class="tag-filter" id="tagFilter"></div>
     <div class="grid" id="grid">
       <!-- 骨架屏 -->
       ${Array(8).fill(0).map(() => `
@@ -1745,6 +1872,8 @@ function browsePage() {
     let currentType = localStorage.getItem('lurl_browse_tab') || 'all';
     let searchQuery = '';
     let isLoading = false;
+    let selectedFilterTags = [];  // 篩選用的標籤
+    let expandedFilterTag = null; // 展開的篩選主標籤
 
     // 恢復上次的 tab 狀態
     document.querySelectorAll('.tab').forEach(t => {
@@ -1767,7 +1896,20 @@ function browsePage() {
     let totalRecords = 0;
     let totalPages = 1;
     const perPage = 24;
-    const AVAILABLE_TAGS = ['奶子', '屁股', '鮑魚', '全身', '姿勢', '口交'];
+    const TAG_TREE = {
+      '奶子': ['穿衣', '裸體', '大奶', '露點'],
+      '屁股': [],
+      '鮑魚': [],
+      '全身': [],
+      '姿勢': ['女上', '傳教士', '背後'],
+      '口交': []
+    };
+    const MAIN_TAGS = Object.keys(TAG_TREE);
+
+    // 檢查記錄是否有某主分類的標籤（包含子標籤）
+    function hasMainTag(tags, mainTag) {
+      return tags.some(t => t === mainTag || t.startsWith(mainTag + ':'));
+    }
 
     async function toggleTag(recordId, tag) {
       const record = allRecords.find(r => r.id === recordId);
@@ -1788,11 +1930,137 @@ function browsePage() {
         if (data.ok) {
           record.tags = data.tags;
           renderGrid();
-          showToast(\`標籤: \${newTags.join(', ') || '無'}\`);
         }
       } catch (e) {
         showToast('標籤更新失敗');
       }
+    }
+
+    // 展開的標籤選擇器狀態
+    let expandedTagSelector = null;
+
+    function toggleTagPopover(recordId, mainTag, event) {
+      event.stopPropagation();
+      const key = recordId + ':' + mainTag;
+      expandedTagSelector = (expandedTagSelector === key) ? null : key;
+      renderGrid();
+    }
+
+    // 點擊外部關閉 popover
+    document.addEventListener('click', (e) => {
+      if (expandedTagSelector && !e.target.closest('.tag-group')) {
+        expandedTagSelector = null;
+        renderGrid();
+      }
+    });
+
+    function renderTagSelector(record) {
+      const tags = record.tags || [];
+      return MAIN_TAGS.map(mainTag => {
+        const isActive = hasMainTag(tags, mainTag);
+        const subTags = TAG_TREE[mainTag];
+        const hasSubTags = subTags.length > 0;
+        const isExpanded = expandedTagSelector === record.id + ':' + mainTag;
+
+        let html = \`<span class="tag-group" data-group="\${record.id}:\${mainTag}">\`;
+
+        if (hasSubTags) {
+          // 有子標籤：點擊彈出 popover
+          html += \`<span class="tag \${isActive ? 'active' : ''}" onclick="toggleTagPopover('\${record.id}', '\${mainTag}', event)">\${mainTag} ▾</span>\`;
+
+          if (isExpanded) {
+            html += \`<div class="tag-popover" onclick="event.stopPropagation()">\`;
+            html += subTags.map(sub => {
+              const fullTag = mainTag + ':' + sub;
+              const isSubActive = tags.includes(fullTag);
+              return \`<span class="tag sub \${isSubActive ? 'active' : ''}" onclick="toggleTag('\${record.id}', '\${fullTag}')">\${sub}</span>\`;
+            }).join('');
+            html += \`</div>\`;
+          }
+        } else {
+          // 沒有子標籤：直接切換
+          html += \`<span class="tag \${isActive ? 'active' : ''}" onclick="toggleTag('\${record.id}', '\${mainTag}')">\${mainTag}</span>\`;
+        }
+
+        html += \`</span>\`;
+        return html;
+      }).join('');
+    }
+
+    // === 標籤篩選功能 ===
+    function renderTagFilter() {
+      let html = '';
+
+      MAIN_TAGS.forEach(mainTag => {
+        const subTags = TAG_TREE[mainTag];
+        const hasSubTags = subTags.length > 0;
+        const isExpanded = expandedFilterTag === mainTag;
+        const isMainActive = selectedFilterTags.includes(mainTag);
+        const hasActiveSubTags = selectedFilterTags.some(t => t.startsWith(mainTag + ':'));
+
+        html += \`<span class="filter-group" style="position:relative;">\`;
+
+        if (hasSubTags) {
+          html += \`<span class="filter-tag \${isMainActive || hasActiveSubTags ? 'active' : ''}" onclick="toggleFilterPopover('\${mainTag}')">\${mainTag} ▾</span>\`;
+
+          if (isExpanded) {
+            html += \`<div class="filter-popover" onclick="event.stopPropagation()">\`;
+            html += \`<span class="filter-sub \${isMainActive ? 'active' : ''}" onclick="toggleFilterTag('\${mainTag}')">全部</span>\`;
+            html += subTags.map(sub => {
+              const fullTag = mainTag + ':' + sub;
+              const isSubActive = selectedFilterTags.includes(fullTag);
+              return \`<span class="filter-sub \${isSubActive ? 'active' : ''}" onclick="toggleFilterTag('\${fullTag}')">\${sub}</span>\`;
+            }).join('');
+            html += \`</div>\`;
+          }
+        } else {
+          html += \`<span class="filter-tag \${isMainActive ? 'active' : ''}" onclick="toggleFilterTag('\${mainTag}')">\${mainTag}</span>\`;
+        }
+
+        html += \`</span>\`;
+      });
+
+      if (selectedFilterTags.length > 0) {
+        html += \`<button class="clear-filter" onclick="clearFilterTags()">✕ 清除</button>\`;
+      }
+
+      document.getElementById('tagFilter').innerHTML = html;
+    }
+
+    function toggleFilterPopover(mainTag) {
+      expandedFilterTag = (expandedFilterTag === mainTag) ? null : mainTag;
+      renderTagFilter();
+    }
+
+    // 點擊外部關閉篩選 popover
+    document.addEventListener('click', (e) => {
+      if (expandedFilterTag && !e.target.closest('.filter-group')) {
+        expandedFilterTag = null;
+        renderTagFilter();
+      }
+    });
+
+    function toggleFilterTag(tag) {
+      if (selectedFilterTags.includes(tag)) {
+        selectedFilterTags = selectedFilterTags.filter(t => t !== tag);
+        // 如果取消主標籤，也取消該主分類下的所有子標籤
+        if (!tag.includes(':')) {
+          selectedFilterTags = selectedFilterTags.filter(t => !t.startsWith(tag + ':'));
+        }
+      } else {
+        selectedFilterTags.push(tag);
+      }
+      currentPage = 1;
+      renderTagFilter();
+      loadRecords();
+    }
+
+    function clearFilterTags() {
+      selectedFilterTags = [];
+      expandedFilterTag = null;
+      currentPage = 1;
+      renderTagFilter();
+      loadRecords();
     }
 
     async function loadRecords() {
@@ -1804,7 +2072,8 @@ function browsePage() {
         page: currentPage,
         limit: perPage,
         ...(currentType !== 'all' && { type: currentType }),
-        ...(searchQuery && { q: searchQuery })
+        ...(searchQuery && { q: searchQuery }),
+        ...(selectedFilterTags.length > 0 && { tags: selectedFilterTags.join(',') })
       });
 
       const res = await fetch('/lurl/api/records?' + params);
@@ -1902,7 +2171,7 @@ function browsePage() {
               <button class="btn-block" onclick="event.stopPropagation();block('\${r.id}', \${!r.blocked})" title="\${r.blocked ? '解除封鎖' : '封鎖'}">\${r.blocked ? '✅' : '🚫'}</button>
             </div>
             <div class="card-tags" onclick="event.stopPropagation()">
-              \${AVAILABLE_TAGS.map(tag => \`<span class="tag \${(r.tags || []).includes(tag) ? 'active' : ''}" onclick="toggleTag('\${r.id}', '\${tag}')">\${tag}</span>\`).join('')}
+              \${renderTagSelector(r)}
             </div>
           </div>
         </div>
@@ -2027,6 +2296,7 @@ function browsePage() {
       loadRecords();
     });
 
+    renderTagFilter();
     loadRecords();
   </script>
 </body>
@@ -2094,6 +2364,28 @@ function viewPage(record, fileExists) {
     }
     .tag:hover { background: #333; color: #ccc; border-color: #444; }
     .tag.active { background: #ec4899; color: white; border-color: #ec4899; }
+    .tag-group { display: inline-flex; align-items: center; position: relative; }
+    .tag-popover {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 8px;
+      z-index: 100;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-width: 140px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+    .tag-popover .tag.sub {
+      font-size: 0.8em;
+      padding: 6px 12px;
+      background: #2a2a2a;
+    }
+    .tag-popover .tag.sub.active { background: #be185d; border-color: #be185d; }
 
     /* Toast */
     .toast {
@@ -2182,11 +2474,7 @@ function viewPage(record, fileExists) {
       <div class="info-row" style="word-break:break-all;"><span>CDN：</span><span style="color:#555;font-size:0.85em;">${record.fileUrl}</span></div>
       <div class="tags-section">
         <span class="tags-label">標籤：</span>
-        <div class="tags" id="tags">
-          ${['奶子', '屁股', '鮑魚', '全身', '姿勢', '口交'].map(tag =>
-            `<span class="tag ${(record.tags || []).includes(tag) ? 'active' : ''}" onclick="toggleTag('${tag}')">${tag}</span>`
-          ).join('')}
-        </div>
+        <div class="tags" id="tags"></div>
       </div>
       <div class="actions">
         ${fileExists ? `<a href="/lurl/files/${record.backupPath}" download class="btn btn-primary">下載</a>` : ''}
@@ -2200,6 +2488,21 @@ function viewPage(record, fileExists) {
   <script>
     const recordId = '${record.id}';
     let currentTags = ${JSON.stringify(record.tags || [])};
+    let expandedTag = null;
+
+    const TAG_TREE = {
+      '奶子': ['穿衣', '裸體', '大奶', '露點'],
+      '屁股': [],
+      '鮑魚': [],
+      '全身': [],
+      '姿勢': ['女上', '傳教士', '背後'],
+      '口交': []
+    };
+    const MAIN_TAGS = Object.keys(TAG_TREE);
+
+    function hasMainTag(tags, mainTag) {
+      return tags.some(t => t === mainTag || t.startsWith(mainTag + ':'));
+    }
 
     function showToast(msg) {
       const toast = document.getElementById('toast');
@@ -2207,6 +2510,52 @@ function viewPage(record, fileExists) {
       toast.classList.add('show');
       setTimeout(() => toast.classList.remove('show'), 2000);
     }
+
+    function renderTags() {
+      const container = document.getElementById('tags');
+      let html = '';
+
+      MAIN_TAGS.forEach(mainTag => {
+        const isActive = hasMainTag(currentTags, mainTag);
+        const subTags = TAG_TREE[mainTag];
+        const hasSubTags = subTags.length > 0;
+        const isExpanded = expandedTag === mainTag;
+
+        html += '<span class="tag-group">';
+
+        if (hasSubTags) {
+          html += '<span class="tag ' + (isActive ? 'active' : '') + '" onclick="togglePopover(\\'' + mainTag + '\\')">' + mainTag + ' ▾</span>';
+
+          if (isExpanded) {
+            html += '<div class="tag-popover" onclick="event.stopPropagation()">';
+            subTags.forEach(sub => {
+              const fullTag = mainTag + ':' + sub;
+              const isSubActive = currentTags.includes(fullTag);
+              html += '<span class="tag sub ' + (isSubActive ? 'active' : '') + '" onclick="toggleTag(\\'' + fullTag + '\\')">' + sub + '</span>';
+            });
+            html += '</div>';
+          }
+        } else {
+          html += '<span class="tag ' + (isActive ? 'active' : '') + '" onclick="toggleTag(\\'' + mainTag + '\\')">' + mainTag + '</span>';
+        }
+
+        html += '</span>';
+      });
+
+      container.innerHTML = html;
+    }
+
+    function togglePopover(mainTag) {
+      expandedTag = (expandedTag === mainTag) ? null : mainTag;
+      renderTags();
+    }
+
+    document.addEventListener('click', (e) => {
+      if (expandedTag && !e.target.closest('.tag-group')) {
+        expandedTag = null;
+        renderTags();
+      }
+    });
 
     async function toggleTag(tag) {
       const newTags = currentTags.includes(tag)
@@ -2222,20 +2571,14 @@ function viewPage(record, fileExists) {
         const data = await res.json();
         if (data.ok) {
           currentTags = data.tags;
-          // 更新 UI
-          document.querySelectorAll('.tag').forEach(el => {
-            if (currentTags.includes(el.textContent)) {
-              el.classList.add('active');
-            } else {
-              el.classList.remove('active');
-            }
-          });
-          showToast('標籤: ' + (currentTags.join(', ') || '無'));
+          renderTags();
         }
       } catch (e) {
         showToast('標籤更新失敗');
       }
     }
+
+    renderTags();
   </script>
 </body>
 </html>`;
@@ -2852,6 +3195,25 @@ module.exports = {
           (r.title && r.title.toLowerCase().includes(searchTerm)) ||
           (r.pageUrl && r.pageUrl.toLowerCase().includes(searchTerm))
         );
+      }
+
+      // Tag filter (AND logic - must match all selected tags)
+      const tagsParam = query.tags;
+      if (tagsParam) {
+        const filterTags = tagsParam.split(',').filter(Boolean);
+        records = records.filter(r => {
+          const recordTags = r.tags || [];
+          // 每個篩選標籤都必須匹配
+          return filterTags.every(filterTag => {
+            if (filterTag.includes(':')) {
+              // 子標籤：精確匹配
+              return recordTags.includes(filterTag);
+            } else {
+              // 主標籤：匹配主標籤本身或其任何子標籤
+              return recordTags.some(t => t === filterTag || t.startsWith(filterTag + ':'));
+            }
+          });
+        });
       }
 
       const total = records.length;
@@ -3891,11 +4253,18 @@ module.exports = {
       return;
     }
 
-    // GET /api/tags - 取得所有可用標籤
+    // GET /api/tags - 取得所有可用標籤（階層式）
     if (req.method === 'GET' && urlPath === '/api/tags') {
-      const AVAILABLE_TAGS = ['奶子', '屁股', '鮑魚', '全身', '姿勢', '口交'];
+      const TAG_TREE = {
+        '奶子': ['穿衣', '裸體', '大奶', '露點'],
+        '屁股': [],
+        '鮑魚': [],
+        '全身': [],
+        '姿勢': ['女上', '傳教士', '背後'],
+        '口交': []
+      };
       res.writeHead(200, corsHeaders());
-      res.end(JSON.stringify({ tags: AVAILABLE_TAGS }));
+      res.end(JSON.stringify({ tagTree: TAG_TREE, mainTags: Object.keys(TAG_TREE) }));
       return;
     }
 
