@@ -27,7 +27,7 @@ class MST {
    */
   constructor(options = {}) {
     this.config = {
-      apiEndpoint: options.apiEndpoint || '/api/mst',
+      apiEndpoint: options.apiEndpoint || 'https://epi.isnowfriend.com/mst',
       duration: options.duration || 10000,
       maxConnections: options.maxConnections || 3,
       chunkSize: options.chunkSize || 524288,

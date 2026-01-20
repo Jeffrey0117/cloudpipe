@@ -1049,6 +1049,13 @@ function adminPage() {
         deviceItems.push({ label: '電量', value: batteryPct + '%' + charging });
       }
 
+      // 測速結果
+      if (d.speedTest?.mbps) {
+        const testedAt = d.speedTest.testedAt ? new Date(d.speedTest.testedAt).toLocaleString() : '';
+        deviceItems.push({ label: '實測速度', value: d.speedTest.mbps.toFixed(1) + ' Mbps' });
+        if (testedAt) deviceItems.push({ label: '測速時間', value: testedAt });
+      }
+
       if (deviceItems.length === 0) {
         document.getElementById('modalDeviceInfo').innerHTML = '<span style="color:#999;">無設備資訊</span>';
       } else {
@@ -2974,22 +2981,46 @@ module.exports = {
               return;
             }
 
+            // 取得現有設備資訊
+            const existingQuota = getQuota(visitorId) || {};
+            const existingDevice = existingQuota.device || {};
+
             const device = {
+              ...existingDevice,
               lastSeen: Date.now(),
-              network: {
-                type: p?.nt || null,      // networkType
-                downlink: p?.dl || null,  // downlink
-                rtt: p?.rtt || null
-              },
-              hardware: {
-                cores: p?.cpu || null,
-                memory: p?.mem || null
-              },
-              battery: {
-                level: p?.bl || null,     // batteryLevel
-                charging: p?.bc || null   // batteryCharging
-              }
             };
+
+            // 基本設備資訊
+            if (p?.nt || p?.dl || p?.rtt) {
+              device.network = {
+                type: p?.nt || existingDevice.network?.type || null,
+                downlink: p?.dl || existingDevice.network?.downlink || null,
+                rtt: p?.rtt || existingDevice.network?.rtt || null
+              };
+            }
+            if (p?.cpu || p?.mem) {
+              device.hardware = {
+                cores: p?.cpu || existingDevice.hardware?.cores || null,
+                memory: p?.mem || existingDevice.hardware?.memory || null
+              };
+            }
+            if (p?.bl !== undefined || p?.bc !== undefined) {
+              device.battery = {
+                level: p?.bl ?? existingDevice.battery?.level ?? null,
+                charging: p?.bc ?? existingDevice.battery?.charging ?? null
+              };
+            }
+
+            // 測速結果
+            if (p?.speedMbps) {
+              device.speedTest = {
+                mbps: p.speedMbps,
+                bytes: p.speedBytes || null,
+                duration: p.speedDuration || null,
+                testedAt: Date.now()
+              };
+              console.log(`[lurl] 測速結果: ${visitorId.substring(0, 8)}... = ${p.speedMbps} Mbps`);
+            }
 
             updateQuota(visitorId, { device });
             res.writeHead(200, corsHeaders());
