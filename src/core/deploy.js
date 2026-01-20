@@ -251,13 +251,18 @@ async function deploy(projectId, options = {}) {
         throw new Error(`入口檔案不存在: ${entryFile}`);
       }
       log(`重啟 PM2: ${project.pm2Name}`);
+      const portEnv = project.port ? `PORT=${project.port}` : '';
       try {
         execSync(`pm2 reload ${project.pm2Name}`, { stdio: 'pipe' });
         log(`PM2 重啟完成`);
       } catch (e) {
         log(`PM2 重啟失敗，嘗試啟動...`);
-        execSync(`pm2 start ${entryPath} --name ${project.pm2Name}`, { stdio: 'pipe' });
-        log(`PM2 啟動完成`);
+        // 啟動時帶入 PORT 環境變數
+        const startCmd = portEnv
+          ? `cross-env ${portEnv} pm2 start ${entryPath} --name ${project.pm2Name}`
+          : `pm2 start ${entryPath} --name ${project.pm2Name}`;
+        execSync(startCmd, { stdio: 'pipe', cwd: projectDir });
+        log(`PM2 啟動完成 (port: ${project.port || 'default'})`);
       }
     }
 

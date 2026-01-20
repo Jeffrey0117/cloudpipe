@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const admin = require('./admin');
 const hotloader = require('./hotloader');
+const deploy = require('./deploy');
 
 // MIME types
 const MIME = {
@@ -147,7 +148,22 @@ module.exports = function(config) {
 
   // 處理 App 子域名
   function handleAppDomain(req, res, { subdomain, appsDir }) {
-    const appDir = path.join(appsDir, subdomain);
+    // 先檢查是否有 Git 部署專案（有 port 配置則代理）
+    const project = deploy.getProject(subdomain);
+    if (project && project.port) {
+      return proxyToPort(req, res, project.port);
+    }
+
+    // 先檢查 apps/ 目錄
+    let appDir = path.join(appsDir, subdomain);
+
+    // 如果 apps/ 沒有，檢查 projects/ 目錄（Git 部署）
+    if (!fs.existsSync(appDir)) {
+      const projectsDir = path.join(__dirname, '../../projects', subdomain);
+      if (fs.existsSync(projectsDir)) {
+        appDir = projectsDir;
+      }
+    }
 
     // 檢查 app 是否存在
     if (!fs.existsSync(appDir)) {
@@ -198,5 +214,29 @@ module.exports = function(config) {
     // 404
     res.writeHead(404, { 'content-type': 'text/html; charset=utf-8' });
     res.end(`<h1>File not found: ${urlPath}</h1>`);
+  }
+
+  // 代理到指定 port
+  function proxyToPort(req, res, port) {
+    const options = {
+      hostname: 'localhost',
+      port: port,
+      path: req.url,
+      method: req.method,
+      headers: req.headers
+    };
+
+    const proxyReq = http.request(options, (proxyRes) => {
+      res.writeHead(proxyRes.statusCode, proxyRes.headers);
+      proxyRes.pipe(res);
+    });
+
+    proxyReq.on('error', (err) => {
+      console.error(`[proxy] Error proxying to port ${port}:`, err.message);
+      res.writeHead(502, { 'content-type': 'text/html; charset=utf-8' });
+      res.end(`<h1>Service unavailable</h1><p>無法連接到後端服務 (port ${port})</p>`);
+    });
+
+    req.pipe(proxyReq);
   }
 };
