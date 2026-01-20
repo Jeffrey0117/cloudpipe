@@ -139,47 +139,10 @@
     footer { text-align: center; margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #252525; }
     .logout-btn { background: #252525; border: none; color: #888; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
     .logout-btn:hover { background: #333; color: #fff; }
-    .cards.three-cols { grid-template-columns: repeat(3, 1fr); }
-    @media (max-width: 900px) { .cards.three-cols { grid-template-columns: repeat(2, 1fr); } }
-    @media (max-width: 600px) { .cards, .cards.three-cols { grid-template-columns: 1fr; } }
+    @media (max-width: 600px) { .cards { grid-template-columns: 1fr; } }
 
-    /* Deploy Section */
-    .deploy-section { background: #151515; border: 1px solid #252525; border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; }
-    .deploy-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
-    .deploy-header h3 { color: #fff; font-weight: 500; }
-    .deploy-header .btn { background: #4ade80; color: #000; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
-    .deploy-header .btn:hover { background: #22c55e; }
-    .deploy-list { display: flex; flex-direction: column; gap: 0.75rem; }
-    .deploy-item { display: flex; align-items: center; justify-content: space-between; background: #0a0a0a; border: 1px solid #252525; border-radius: 8px; padding: 1rem; }
-    .deploy-item:hover { border-color: #333; }
-    .deploy-item .info { flex: 1; }
-    .deploy-item .name { font-weight: 500; color: #fff; margin-bottom: 4px; }
-    .deploy-item .meta { font-size: 0.8rem; color: #666; display: flex; gap: 12px; }
-    .deploy-item .status { padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; margin-right: 12px; }
-    .deploy-item .status.success { background: #14532d; color: #4ade80; }
-    .deploy-item .status.failed { background: #5c2626; color: #f87171; }
-    .deploy-item .status.pending { background: #1e293b; color: #94a3b8; }
-    .deploy-item .actions { display: flex; gap: 0.5rem; }
-    .deploy-item .actions button { background: #252525; border: none; color: #888; padding: 0.5rem 0.75rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
-    .deploy-item .actions button:hover { background: #333; color: #fff; }
-    .deploy-item .actions button.deploy-btn { background: #1e3a5f; color: #8ab4f8; }
-    .deploy-item .actions button.deploy-btn:hover { background: #2a4a7f; }
-    .deploy-item .actions button.delete:hover { background: #5c2626; color: #f87171; }
-
-    /* Deploy Modal */
-    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-    .modal { background: #151515; border: 1px solid #333; border-radius: 12px; width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; }
-    .modal-header { padding: 1.25rem; border-bottom: 1px solid #252525; display: flex; justify-content: space-between; align-items: center; }
-    .modal-header h3 { color: #fff; font-size: 1.1rem; }
-    .modal-body { padding: 1.25rem; }
-    .modal-footer { padding: 1.25rem; border-top: 1px solid #252525; display: flex; justify-content: flex-end; gap: 0.75rem; }
-    .form-group { margin-bottom: 1rem; }
-    .form-group label { display: block; color: #888; font-size: 0.85rem; margin-bottom: 0.4rem; }
-    .form-group input, .form-group select { width: 100%; background: #0a0a0a; border: 1px solid #333; border-radius: 6px; padding: 0.75rem; color: #fff; font-size: 0.95rem; }
-    .form-group input:focus, .form-group select:focus { outline: none; border-color: #4ade80; }
+    /* Form */
     .form-hint { font-size: 0.75rem; color: #555; margin-top: 0.3rem; }
-    .btn-secondary { background: #252525; border: none; color: #888; padding: 0.6rem 1rem; border-radius: 6px; cursor: pointer; }
-    .btn-secondary:hover { background: #333; color: #fff; }
     .btn-primary { background: #4ade80; border: none; color: #000; padding: 0.6rem 1rem; border-radius: 6px; cursor: pointer; font-weight: 500; }
     .btn-primary:hover { background: #22c55e; }
 
@@ -188,6 +151,78 @@
     .toast.show { transform: translateY(0); opacity: 1; }
     .toast.success { background: #14532d; }
     .toast.error { background: #5c2626; }
+
+    /* Source Selector */
+    .source-selector {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+    .source-btn {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.875rem 1rem;
+      background: #0a0a0a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      color: #888;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .source-btn:hover {
+      border-color: #555;
+      color: #ccc;
+    }
+    .source-btn.active {
+      background: #1a2e1a;
+      border-color: #4ade80;
+      color: #4ade80;
+    }
+    .source-icon {
+      font-size: 1.1rem;
+    }
+
+    /* GitHub Input */
+    .github-input {
+      margin-bottom: 1rem;
+    }
+    .github-input label {
+      display: block;
+      color: #888;
+      font-size: 0.85rem;
+      margin-bottom: 0.5rem;
+    }
+    .github-input input {
+      width: 100%;
+      background: #0a0a0a;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 0.75rem;
+      color: #fff;
+      font-size: 0.95rem;
+    }
+    .github-input input:focus {
+      outline: none;
+      border-color: #4ade80;
+    }
+
+    /* GitHub Deploy Button */
+    .github-deploy {
+      margin-top: 1rem;
+    }
+    .btn-full {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 1rem;
+      font-size: 1rem;
+    }
 
   </style>
 </head>
@@ -222,7 +257,7 @@
       </div>
     </header>
     <main>
-      <section class="cards three-cols">
+      <section class="cards">
         <div class="card" onclick="showUpload('service')">
           <div class="card-icon">📡</div>
           <h2>API 服務</h2>
@@ -235,12 +270,6 @@
           <p>子域名式</p>
           <code>xxx.isnowfriend.com</code>
         </div>
-        <div class="card" onclick="showDeploySection()">
-          <div class="card-icon">🚀</div>
-          <h2>Git 部署</h2>
-          <p>GitHub 自動部署</p>
-          <code>Push → Deploy</code>
-        </div>
       </section>
 
       <section class="upload-zone hidden" id="uploadZone">
@@ -248,7 +277,26 @@
           <span id="uploadTitle">上傳</span>
           <button class="close-btn" onclick="hideUpload()">&times;</button>
         </div>
-        <div class="guide"><p id="guideText"></p></div>
+
+        <!-- 來源選擇器（僅專案部署時顯示） -->
+        <div class="source-selector hidden" id="sourceSelector">
+          <button class="source-btn active" data-source="zip" onclick="switchSource('zip')">
+            <span class="source-icon">📦</span>
+            <span>上傳 ZIP</span>
+          </button>
+          <button class="source-btn" data-source="github" onclick="switchSource('github')">
+            <span class="source-icon">🐙</span>
+            <span>GitHub</span>
+          </button>
+        </div>
+
+        <!-- GitHub URL 輸入（僅 GitHub 來源顯示） -->
+        <div class="github-input hidden" id="githubInput">
+          <label>GitHub Repository</label>
+          <input type="text" id="githubUrl" placeholder="https://github.com/user/repo" oninput="parseGithubUrl()">
+          <p class="form-hint">貼上 repo 網址，自動解析專案名稱</p>
+        </div>
+
         <div class="name-input">
           <label id="nameLabel">名稱</label>
           <div class="input-preview">
@@ -257,12 +305,22 @@
           </div>
           <p class="name-hint" id="nameHint"></p>
         </div>
+
+        <!-- ZIP 上傳區 -->
         <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
           <div class="dropzone-icon">📁</div>
           <p>拖拽檔案到這裡</p>
           <p class="hint" id="uploadHint">或點擊選擇檔案</p>
           <input type="file" id="fileInput" hidden onchange="handleUpload()">
         </div>
+
+        <!-- GitHub 部署按鈕 -->
+        <div class="github-deploy hidden" id="githubDeploy">
+          <button class="btn-primary btn-full" onclick="deployFromGithub()">
+            <span>🚀</span> 部署專案
+          </button>
+        </div>
+
         <div class="format-hint" id="formatHint" style="display:none; margin-top: 1rem; padding: 1rem; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; font-size: 0.85rem;">
           <p style="color: #f59e0b; margin-bottom: 0.5rem;">⚠️ Service 格式要求</p>
           <p style="color: #888; margin-bottom: 0.5rem;">檔案必須導出 <code style="background:#252525;padding:2px 6px;border-radius:4px;">match(req)</code> 和 <code style="background:#252525;padding:2px 6px;border-radius:4px;">handle(req, res)</code></p>
@@ -273,68 +331,12 @@
         </div>
       </section>
 
-      <!-- Git Deploy Section -->
-      <section class="deploy-section hidden" id="deploySection">
-        <div class="deploy-header">
-          <h3>🚀 Git 部署專案</h3>
-          <button class="btn" onclick="showNewProjectModal()">+ 新增專案</button>
-        </div>
-        <div class="deploy-list" id="deployList">
-          <div class="empty">載入中...</div>
-        </div>
-      </section>
-
     </main>
     <footer>
       <button class="logout-btn" onclick="doLogout()">Logout</button>
     </footer>
   </div>
 
-  <!-- New Project Modal -->
-  <div class="modal-overlay hidden" id="newProjectModal">
-    <div class="modal">
-      <div class="modal-header">
-        <h3>新增 Git 部署專案</h3>
-        <button class="close-btn" onclick="closeModal('newProjectModal')">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="form-group">
-          <label>專案 ID *</label>
-          <input type="text" id="projectId" placeholder="my-project">
-          <p class="form-hint">小寫英文、數字、連字號</p>
-        </div>
-        <div class="form-group">
-          <label>專案名稱</label>
-          <input type="text" id="projectName" placeholder="My Project">
-        </div>
-        <div class="form-group">
-          <label>Git Repository URL *</label>
-          <input type="text" id="repoUrl" placeholder="https://github.com/user/repo">
-        </div>
-        <div class="form-group">
-          <label>Branch</label>
-          <input type="text" id="branch" value="main">
-        </div>
-        <div class="form-group">
-          <label>目錄路徑</label>
-          <input type="text" id="directory" placeholder="projects/my-project">
-          <p class="form-hint">相對於 cloudpipe 根目錄</p>
-        </div>
-        <div class="form-group">
-          <label>入口檔案</label>
-          <input type="text" id="entryFile" value="index.js">
-        </div>
-        <div class="form-group">
-          <label>PM2 名稱</label>
-          <input type="text" id="pm2Name" placeholder="留空則使用專案 ID">
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn-secondary" onclick="closeModal('newProjectModal')">取消</button>
-        <button class="btn-primary" onclick="createProject()">建立專案</button>
-      </div>
-    </div>
-  </div>
 
   <!-- Toast -->
   <div class="toast" id="toast"></div>
@@ -448,26 +450,116 @@
     }
 
     // 上傳區
+    let currentSource = 'zip'; // 'zip' or 'github'
+
     function showUpload(type) {
       currentType = type;
+      currentSource = 'zip';
       document.getElementById('uploadZone').classList.remove('hidden');
       document.getElementById('uploadStatus').classList.add('hidden');
       document.getElementById('serviceName').value = '';
+      document.getElementById('githubUrl').value = '';
+      document.getElementById('dropzone').style.display = 'block';
 
       if (type === 'service') {
         document.getElementById('uploadTitle').textContent = '上傳 API 服務';
         document.getElementById('nameLabel').textContent = 'API 名稱';
         document.getElementById('nameSuffix').textContent = '';
-        document.getElementById('guideText').innerHTML = '上傳 <code>.js</code> 檔案 → <code>epi.isnowfriend.com/你的名稱</code>';
         document.getElementById('fileInput').accept = '.js';
         document.getElementById('formatHint').style.display = 'block';
+        document.getElementById('sourceSelector').classList.add('hidden');
+        document.getElementById('githubInput').classList.add('hidden');
+        document.getElementById('githubDeploy').classList.add('hidden');
       } else {
         document.getElementById('uploadTitle').textContent = '部署專案';
         document.getElementById('nameLabel').textContent = '子域名';
         document.getElementById('nameSuffix').textContent = '.isnowfriend.com';
-        document.getElementById('guideText').innerHTML = '上傳 <code>.zip</code> → <code>你的名稱.isnowfriend.com</code>';
         document.getElementById('fileInput').accept = '.zip';
         document.getElementById('formatHint').style.display = 'none';
+        document.getElementById('sourceSelector').classList.remove('hidden');
+        // 重設來源選擇器
+        document.querySelectorAll('.source-btn').forEach(btn => {
+          btn.classList.toggle('active', btn.dataset.source === 'zip');
+        });
+        switchSource('zip');
+      }
+    }
+
+    function switchSource(source) {
+      currentSource = source;
+      document.querySelectorAll('.source-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.source === source);
+      });
+
+      if (source === 'zip') {
+        document.getElementById('githubInput').classList.add('hidden');
+        document.getElementById('dropzone').style.display = 'block';
+        document.getElementById('githubDeploy').classList.add('hidden');
+      } else {
+        document.getElementById('githubInput').classList.remove('hidden');
+        document.getElementById('dropzone').style.display = 'none';
+        document.getElementById('githubDeploy').classList.remove('hidden');
+      }
+    }
+
+    function parseGithubUrl() {
+      const url = document.getElementById('githubUrl').value.trim();
+      // 解析 https://github.com/user/repo 或 https://github.com/user/repo.git
+      const match = url.match(/github\.com\/[\w-]+\/([\w.-]+?)(\.git)?$/);
+      if (match) {
+        const repoName = match[1].toLowerCase().replace(/\./g, '-');
+        document.getElementById('serviceName').value = repoName;
+      }
+    }
+
+    async function deployFromGithub() {
+      const repoUrl = document.getElementById('githubUrl').value.trim();
+      const name = document.getElementById('serviceName').value.trim();
+
+      if (!repoUrl) return showToast('請輸入 GitHub URL', 'error');
+      if (!name) return showToast('請輸入子域名', 'error');
+      if (!/^[a-z0-9-]+$/.test(name)) return showToast('名稱只能包含小寫字母、數字和連字號', 'error');
+
+      document.getElementById('githubDeploy').innerHTML = '<button class="btn-primary btn-full" disabled>部署中...</button>';
+
+      try {
+        const res = await fetch('/api/_admin/deploy/projects', {
+          method: 'POST',
+          headers: {
+            'authorization': 'Bearer ' + authToken,
+            'content-type': 'application/json'
+          },
+          body: JSON.stringify({
+            id: name,
+            name: name,
+            deployMethod: 'github',
+            repoUrl: repoUrl,
+            branch: 'main',
+            directory: `projects/${name}`,
+            entryFile: 'index.js',
+            pm2Name: name
+          })
+        });
+        const result = await res.json();
+
+        if (result.error) {
+          showToast(result.error, 'error');
+          return;
+        }
+
+        // 立即觸發部署
+        await fetch(`/api/_admin/deploy/projects/${name}/deploy`, {
+          method: 'POST',
+          headers: { 'authorization': 'Bearer ' + authToken }
+        });
+
+        showToast('專案已建立並開始部署');
+        document.getElementById('uploadStatus').classList.remove('hidden');
+        document.getElementById('statusText').innerHTML = `部署中...<br>完成後可訪問 <a href="https://${name}.isnowfriend.com" target="_blank">${name}.isnowfriend.com</a>`;
+      } catch (e) {
+        showToast('部署失敗: ' + e.message, 'error');
+      } finally {
+        document.getElementById('githubDeploy').innerHTML = '<button class="btn-primary btn-full" onclick="deployFromGithub()"><span>🚀</span> 部署專案</button>';
       }
     }
 
@@ -564,177 +656,12 @@
       loadDeployed();
     }
 
-    // ===== Git 部署功能 =====
-
-    // 顯示部署區塊
-    function showDeploySection() {
-      document.getElementById('uploadZone').classList.add('hidden');
-      document.getElementById('deploySection').classList.remove('hidden');
-      loadDeployProjects();
-    }
-
-    // 載入部署專案
-    async function loadDeployProjects() {
-      try {
-        const res = await fetch('/api/_admin/deploy/projects', {
-          headers: { 'authorization': 'Bearer ' + authToken }
-        });
-        const data = await res.json();
-
-        if (!data.projects || data.projects.length === 0) {
-          document.getElementById('deployList').innerHTML = '<div class="empty">尚無 Git 部署專案，點擊「+ 新增專案」開始</div>';
-          return;
-        }
-
-        document.getElementById('deployList').innerHTML = data.projects.map(p => `
-          <div class="deploy-item">
-            <div class="info">
-              <div class="name">${p.name || p.id}</div>
-              <div class="meta">
-                <span>${p.branch || 'main'}</span>
-                <span>${p.repoUrl ? p.repoUrl.replace('https://github.com/', '') : '-'}</span>
-                ${p.lastDeployAt ? '<span>' + formatTime(p.lastDeployAt) + '</span>' : ''}
-              </div>
-            </div>
-            <span class="status ${p.lastDeployStatus || 'pending'}">${getStatusText(p.lastDeployStatus)}</span>
-            <div class="actions">
-              <button class="deploy-btn" onclick="triggerDeploy('${p.id}')">Deploy</button>
-              <button onclick="copyWebhook('${p.id}')">Webhook</button>
-              <button class="delete" onclick="deleteProject('${p.id}')">刪除</button>
-            </div>
-          </div>
-        `).join('');
-      } catch (e) {
-        document.getElementById('deployList').innerHTML = '<div class="empty">載入失敗</div>';
-      }
-    }
-
-    // Modal
-    function showNewProjectModal() {
-      document.getElementById('newProjectModal').classList.remove('hidden');
-    }
-    function closeModal(id) {
-      document.getElementById(id).classList.add('hidden');
-    }
-
     // Toast
     function showToast(message, type = 'success') {
       const toast = document.getElementById('toast');
       toast.textContent = message;
       toast.className = 'toast show ' + type;
       setTimeout(() => toast.className = 'toast', 3000);
-    }
-
-    // 建立專案
-    async function createProject() {
-      const id = document.getElementById('projectId').value.trim();
-      const repoUrl = document.getElementById('repoUrl').value.trim();
-
-      if (!id) return showToast('請輸入專案 ID', 'error');
-      if (!repoUrl) return showToast('請輸入 Git URL', 'error');
-      if (!/^[a-z0-9-]+$/.test(id)) return showToast('ID 只能包含小寫字母、數字和連字號', 'error');
-
-      const data = {
-        id,
-        name: document.getElementById('projectName').value.trim() || id,
-        deployMethod: 'github',
-        repoUrl,
-        branch: document.getElementById('branch').value.trim() || 'main',
-        directory: document.getElementById('directory').value.trim() || `projects/${id}`,
-        entryFile: document.getElementById('entryFile').value.trim() || 'index.js',
-        pm2Name: document.getElementById('pm2Name').value.trim() || id
-      };
-
-      try {
-        const res = await fetch('/api/_admin/deploy/projects', {
-          method: 'POST',
-          headers: {
-            'authorization': 'Bearer ' + authToken,
-            'content-type': 'application/json'
-          },
-          body: JSON.stringify(data)
-        });
-        const result = await res.json();
-
-        if (result.error) {
-          showToast(result.error, 'error');
-          return;
-        }
-
-        showToast('專案已建立');
-        closeModal('newProjectModal');
-        loadDeployProjects();
-
-        // 清空表單
-        ['projectId', 'projectName', 'repoUrl', 'directory', 'pm2Name'].forEach(id => {
-          document.getElementById(id).value = '';
-        });
-        document.getElementById('branch').value = 'main';
-        document.getElementById('entryFile').value = 'index.js';
-      } catch (e) {
-        showToast('建立失敗: ' + e.message, 'error');
-      }
-    }
-
-    // 觸發部署
-    async function triggerDeploy(id) {
-      showToast('正在觸發部署...');
-      try {
-        const res = await fetch(`/api/_admin/deploy/projects/${id}/deploy`, {
-          method: 'POST',
-          headers: { 'authorization': 'Bearer ' + authToken }
-        });
-        const result = await res.json();
-        if (result.error) {
-          showToast(result.error, 'error');
-        } else {
-          showToast('部署已觸發');
-          setTimeout(loadDeployProjects, 3000);
-        }
-      } catch (e) {
-        showToast('觸發失敗', 'error');
-      }
-    }
-
-    // 複製 Webhook URL
-    function copyWebhook(id) {
-      const url = window.location.origin + '/webhook/' + id;
-      navigator.clipboard.writeText(url);
-      showToast('Webhook URL 已複製: ' + url);
-    }
-
-    // 刪除專案
-    async function deleteProject(id) {
-      if (!confirm('確定刪除專案 ' + id + '？')) return;
-      try {
-        await fetch(`/api/_admin/deploy/projects/${id}`, {
-          method: 'DELETE',
-          headers: { 'authorization': 'Bearer ' + authToken }
-        });
-        showToast('專案已刪除');
-        loadDeployProjects();
-      } catch (e) {
-        showToast('刪除失敗', 'error');
-      }
-    }
-
-    // 輔助函數
-    function getStatusText(status) {
-      if (status === 'success') return 'Ready';
-      if (status === 'failed') return 'Failed';
-      if (status === 'building') return 'Building';
-      return 'Ready';
-    }
-
-    function formatTime(isoString) {
-      if (!isoString) return '';
-      const date = new Date(isoString);
-      const now = new Date();
-      const diff = now - date;
-      if (diff < 60000) return '剛剛';
-      if (diff < 3600000) return Math.floor(diff/60000) + ' 分鐘前';
-      if (diff < 86400000) return Math.floor(diff/3600000) + ' 小時前';
-      return date.toLocaleDateString();
     }
 
   </script>
