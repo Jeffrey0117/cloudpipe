@@ -2943,7 +2943,7 @@ function viewPage(record, fileExists) {
     </nav>
   </div>
   <div class="container">
-    <a href="/lurl/browse" class="back-link">← 返回影片庫</a>
+    <a href="javascript:history.back()" class="back-link">← 返回影片庫</a>
     <div class="media-container">
       ${fileExists
         ? (isVideo
@@ -5132,7 +5132,7 @@ module.exports = {
 
       if (!record) {
         res.writeHead(404, corsHeaders('text/html; charset=utf-8'));
-        res.end('<h1>404 - 找不到此內容</h1><a href="/lurl/browse">返回影片庫</a>');
+        res.end('<h1>404 - 找不到此內容</h1><a href="javascript:history.back()">返回影片庫</a>');
         return;
       }
 
