@@ -583,8 +583,9 @@
           const status = data.project?.lastDeployStatus;
 
           if (status === 'success') {
-            showToast('部署成功！', 'success');
-            document.getElementById('statusText').innerHTML = `✅ 部署成功！<br><a href="https://${projectId}.isnowfriend.com" target="_blank">${projectId}.isnowfriend.com</a>`;
+            const portInfo = data.project?.port ? ` (Port: ${data.project.port})` : '';
+            showToast('部署成功！' + portInfo, 'success');
+            document.getElementById('statusText').innerHTML = `✅ 部署成功！${portInfo}<br><a href="https://${projectId}.isnowfriend.com" target="_blank">${projectId}.isnowfriend.com</a>`;
             return;
           } else if (status === 'failed') {
             // 取得最新的部署記錄來顯示錯誤訊息
