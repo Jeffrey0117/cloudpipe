@@ -263,6 +263,11 @@
           <p class="hint" id="uploadHint">或點擊選擇檔案</p>
           <input type="file" id="fileInput" hidden onchange="handleUpload()">
         </div>
+        <div class="format-hint" id="formatHint" style="display:none; margin-top: 1rem; padding: 1rem; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; font-size: 0.85rem;">
+          <p style="color: #f59e0b; margin-bottom: 0.5rem;">⚠️ Service 格式要求</p>
+          <p style="color: #888; margin-bottom: 0.5rem;">檔案必須導出 <code style="background:#252525;padding:2px 6px;border-radius:4px;">match(req)</code> 和 <code style="background:#252525;padding:2px 6px;border-radius:4px;">handle(req, res)</code></p>
+          <p style="color: #666;"><a href="/_example.js" target="_blank" style="color: #4ade80;">📄 查看範例 _example.js</a></p>
+        </div>
         <div class="upload-status hidden" id="uploadStatus">
           <p id="statusText">上傳中...</p>
         </div>
@@ -455,12 +460,14 @@
         document.getElementById('nameSuffix').textContent = '';
         document.getElementById('guideText').innerHTML = '上傳 <code>.js</code> 檔案 → <code>epi.isnowfriend.com/你的名稱</code>';
         document.getElementById('fileInput').accept = '.js';
+        document.getElementById('formatHint').style.display = 'block';
       } else {
         document.getElementById('uploadTitle').textContent = '部署專案';
         document.getElementById('nameLabel').textContent = '子域名';
         document.getElementById('nameSuffix').textContent = '.isnowfriend.com';
         document.getElementById('guideText').innerHTML = '上傳 <code>.zip</code> → <code>你的名稱.isnowfriend.com</code>';
         document.getElementById('fileInput').accept = '.zip';
+        document.getElementById('formatHint').style.display = 'none';
       }
     }
 

@@ -94,6 +94,15 @@ module.exports = function(config) {
       }
     }
 
+    // /_example.js → services/_example.js (範例檔案)
+    if (urlPath === '/_example.js') {
+      const exampleFile = path.join(servicesDir, '_example.js');
+      if (fs.existsSync(exampleFile)) {
+        res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8' });
+        return res.end(fs.readFileSync(exampleFile));
+      }
+    }
+
     // 靜態檔案 (public/)
     const staticFile = urlPath === '/' ? '/index.html' : urlPath;
     const filePath = path.join(publicDir, staticFile);
