@@ -190,13 +190,13 @@
     .github-input {
       margin-bottom: 1rem;
     }
-    .github-input label {
+    .github-input > label {
       display: block;
       color: #888;
       font-size: 0.85rem;
       margin-bottom: 0.5rem;
     }
-    .github-input input {
+    .github-input > input {
       width: 100%;
       background: #0a0a0a;
       border: 1px solid #333;
@@ -205,7 +205,35 @@
       color: #fff;
       font-size: 0.95rem;
     }
-    .github-input input:focus {
+    .github-input > input:focus {
+      outline: none;
+      border-color: #4ade80;
+    }
+    .github-options {
+      display: flex;
+      gap: 1rem;
+      margin-top: 0.75rem;
+    }
+    .branch-input {
+      flex: 1;
+      max-width: 150px;
+    }
+    .branch-input label {
+      display: block;
+      color: #666;
+      font-size: 0.75rem;
+      margin-bottom: 0.35rem;
+    }
+    .branch-input input {
+      width: 100%;
+      background: #0a0a0a;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      color: #fff;
+      font-size: 0.85rem;
+    }
+    .branch-input input:focus {
       outline: none;
       border-color: #4ade80;
     }
@@ -294,7 +322,12 @@
         <div class="github-input hidden" id="githubInput">
           <label>GitHub Repository</label>
           <input type="text" id="githubUrl" placeholder="https://github.com/user/repo" oninput="parseGithubUrl()">
-          <p class="form-hint">貼上 repo 網址，自動解析專案名稱</p>
+          <div class="github-options">
+            <div class="branch-input">
+              <label>Branch</label>
+              <input type="text" id="githubBranch" value="main" placeholder="main">
+            </div>
+          </div>
         </div>
 
         <div class="name-input">
@@ -459,6 +492,7 @@
       document.getElementById('uploadStatus').classList.add('hidden');
       document.getElementById('serviceName').value = '';
       document.getElementById('githubUrl').value = '';
+      document.getElementById('githubBranch').value = 'main';
       document.getElementById('dropzone').style.display = 'block';
 
       if (type === 'service') {
@@ -515,6 +549,7 @@
     async function deployFromGithub() {
       const repoUrl = document.getElementById('githubUrl').value.trim();
       const name = document.getElementById('serviceName').value.trim();
+      const branch = document.getElementById('githubBranch').value.trim() || 'main';
 
       if (!repoUrl) return showToast('請輸入 GitHub URL', 'error');
       if (!name) return showToast('請輸入子域名', 'error');
@@ -534,7 +569,7 @@
             name: name,
             deployMethod: 'github',
             repoUrl: repoUrl,
-            branch: 'main',
+            branch: branch,
             directory: `projects/${name}`,
             entryFile: 'index.js',
             pm2Name: name
