@@ -18,6 +18,10 @@ const PROJECTS_FILE = path.join(DATA_DIR, 'projects.json');
 const DEPLOYMENTS_FILE = path.join(DATA_DIR, 'deployments.json');
 const CLOUDPIPE_ROOT = path.join(__dirname, '../..');
 
+// Cloudflare Tunnel 設定
+const CLOUDFLARED = 'C:\\Users\\jeffb\\cloudflared.exe';
+const TUNNEL_ID = 'afd11345-c75a-4d62-aa67-0a389d82ce74';
+
 // ==================== 資料存取 ====================
 
 function readProjects() {
@@ -264,6 +268,15 @@ async function deploy(projectId, options = {}) {
         execSync(startCmd, { stdio: 'pipe', cwd: projectDir });
         log(`PM2 啟動完成 (port: ${project.port || 'default'})`);
       }
+    }
+
+    // 自動建立 DNS (Cloudflare Tunnel)
+    try {
+      const hostname = `${project.id}.isnowfriend.com`;
+      execSync(`"${CLOUDFLARED}" tunnel route dns ${TUNNEL_ID} ${hostname}`, { stdio: 'ignore' });
+      log(`DNS 已建立: ${hostname}`);
+    } catch (e) {
+      log(`DNS 建立失敗: ${e.message}`);
     }
 
     // 更新部署狀態
