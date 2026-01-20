@@ -557,12 +557,53 @@
           headers: { 'authorization': 'Bearer ' + authToken }
         });
         document.getElementById('uploadStatus').classList.remove('hidden');
-        document.getElementById('statusText').innerHTML = `部署中...<br>完成後可訪問 <a href="https://${name}.isnowfriend.com" target="_blank">${name}.isnowfriend.com</a>`;
+        document.getElementById('statusText').innerHTML = `部署中...<br><a href="https://${name}.isnowfriend.com" target="_blank">${name}.isnowfriend.com</a>`;
+
+        // 輪詢檢查部署狀態
+        pollDeployStatus(name);
       } catch (e) {
         showToast('部署失敗: ' + e.message, 'error');
       } finally {
         document.getElementById('githubDeploy').innerHTML = '<button class="btn-primary btn-full" onclick="deployFromGithub()"><span>🚀</span> 部署專案</button>';
       }
+    }
+
+    // 輪詢部署狀態
+    async function pollDeployStatus(projectId) {
+      const maxAttempts = 60; // 最多等 2 分鐘
+      let attempts = 0;
+
+      const check = async () => {
+        attempts++;
+        try {
+          const res = await fetch(`/api/_admin/deploy/projects/${projectId}`, {
+            headers: { 'authorization': 'Bearer ' + authToken }
+          });
+          const data = await res.json();
+          const status = data.project?.lastDeployStatus;
+
+          if (status === 'success') {
+            showToast('部署成功！', 'success');
+            document.getElementById('statusText').innerHTML = `✅ 部署成功！<br><a href="https://${projectId}.isnowfriend.com" target="_blank">${projectId}.isnowfriend.com</a>`;
+            return;
+          } else if (status === 'failed') {
+            showToast('部署失敗', 'error');
+            document.getElementById('statusText').innerHTML = `❌ 部署失敗<br>請檢查 console log`;
+            return;
+          }
+
+          // 還在進行中，繼續輪詢
+          if (attempts < maxAttempts) {
+            setTimeout(check, 2000);
+          } else {
+            document.getElementById('statusText').innerHTML = `⏱️ 部署超時，請檢查後台`;
+          }
+        } catch (e) {
+          console.error('檢查部署狀態失敗:', e);
+        }
+      };
+
+      setTimeout(check, 2000);
     }
 
     function hideUpload() {
