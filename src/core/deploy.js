@@ -165,17 +165,24 @@ async function deploy(projectId, options = {}) {
     // 確保目錄存在
     if (!fs.existsSync(projectDir)) {
       if (project.deployMethod === 'github' || project.deployMethod === 'git-url') {
-        // Clone repo
+        // Clone repo（不指定 branch，自動用 repo 預設 branch）
         log(`目錄不存在，執行 git clone...`);
         const parentDir = path.dirname(projectDir);
         if (!fs.existsSync(parentDir)) {
           fs.mkdirSync(parentDir, { recursive: true });
         }
-        execSync(`git clone -b ${project.branch} ${project.repoUrl} ${path.basename(projectDir)}`, {
+        execSync(`git clone ${project.repoUrl} ${path.basename(projectDir)}`, {
           cwd: parentDir,
           stdio: 'pipe'
         });
-        log(`Clone 完成`);
+        // 自動偵測實際使用的 branch 並更新配置
+        const actualBranch = execSync('git branch --show-current', { cwd: projectDir }).toString().trim();
+        if (actualBranch && actualBranch !== project.branch) {
+          log(`偵測到預設 branch: ${actualBranch}（原設定: ${project.branch}）`);
+          updateProject(project.id, { branch: actualBranch });
+          project.branch = actualBranch;
+        }
+        log(`Clone 完成 (branch: ${project.branch})`);
       } else {
         fs.mkdirSync(projectDir, { recursive: true });
         log(`建立目錄: ${projectDir}`);
