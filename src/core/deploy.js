@@ -197,12 +197,12 @@ function updateTunnelIngress(hostname, port) {
 /**
  * 執行 Health Check，確認服務啟動
  * @param {number} port - 服務 port
- * @param {string} endpoint - 檢查的 endpoint（預設 /）
+ * @param {string} endpoint - 檢查的 endpoint（預設 /health）
  * @param {function} log - log 函數
  * @param {number} retries - 重試次數（預設 3）
  * @param {number} delay - 重試間隔 ms（預設 2000）
  */
-async function performHealthCheck(port, endpoint = '/', log, retries = 5, delay = 3000) {
+async function performHealthCheck(port, endpoint = '/health', log, retries = 5, delay = 3000) {
   const http = require('http');
   const url = `http://localhost:${port}${endpoint}`;
 
@@ -437,7 +437,7 @@ async function deploy(projectId, options = {}) {
       // Health Check：確認服務啟動
       if (project.port) {
         log(`執行 Health Check (port: ${project.port})...`);
-        const healthCheckPassed = await performHealthCheck(project.port, project.healthEndpoint || '/', log);
+        const healthCheckPassed = await performHealthCheck(project.port, project.healthEndpoint || '/health', log);
         if (!healthCheckPassed) {
           throw new Error(`Health Check 失敗：服務未能在 port ${project.port} 啟動`);
         }

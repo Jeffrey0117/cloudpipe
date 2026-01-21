@@ -64,6 +64,15 @@ try {
   console.log('[lurl] ⚠️ Puppeteer 備援模組未載入:', e.message);
 }
 
+// Workr 外部 Worker 平台
+let workr = null;
+try {
+  workr = require('./_workr-client');
+  console.log('[lurl] ✅ Workr client 已載入');
+} catch (e) {
+  console.log('[lurl] ⚠️ Workr client 未載入:', e.message);
+}
+
 // ==================== 安全配置 ====================
 // 從環境變數讀取，請在 .env 檔案中設定
 const ADMIN_PASSWORD = process.env.LURL_ADMIN_PASSWORD || 'change-me';
@@ -324,11 +333,50 @@ async function processHLSQueue() {
   hlsProcessing = false;
 }
 
-// 加入 HLS 轉檔佇列
-function queueHLSTranscode(recordId) {
+// 加入 HLS 轉檔佇列（使用 workr 外部平台）
+async function queueHLSTranscode(recordId) {
+  // 如果 workr 可用，使用外部 worker
+  if (workr) {
+    try {
+      const records = readAllRecords();
+      const record = records.find(r => r.id === recordId);
+      if (!record || record.type !== 'video') {
+        console.log(`[HLS] 跳過 ${recordId}：非影片或不存在`);
+        return;
+      }
+
+      const inputPath = path.join(DATA_DIR, record.backupPath);
+      if (!fs.existsSync(inputPath)) {
+        console.log(`[HLS] 跳過 ${recordId}：原始檔案不存在`);
+        return;
+      }
+
+      const outputDir = path.join(HLS_DIR, recordId);
+
+      // 檢查是否已轉檔
+      if (fs.existsSync(path.join(outputDir, 'master.m3u8'))) {
+        console.log(`[HLS] 跳過 ${recordId}：已存在 HLS 版本`);
+        return;
+      }
+
+      const { jobId } = await workr.submitJob('hls', {
+        inputPath,
+        outputDir
+      }, {
+        callback: `http://localhost:8787/lurl/api/callback/hls/${recordId}`
+      });
+
+      console.log(`[HLS] 已提交到 workr: ${recordId} -> ${jobId}`);
+      return;
+    } catch (e) {
+      console.error(`[HLS] workr 提交失敗，fallback 到內部佇列:`, e.message);
+    }
+  }
+
+  // Fallback: 使用內部佇列
   if (!hlsQueue.includes(recordId)) {
     hlsQueue.push(recordId);
-    console.log(`[HLS] 加入佇列: ${recordId}，目前 ${hlsQueue.length} 個待處理`);
+    console.log(`[HLS] 加入內部佇列: ${recordId}，目前 ${hlsQueue.length} 個待處理`);
     processHLSQueue();
   }
 }
@@ -5722,6 +5770,40 @@ module.exports = {
       } else {
         fs.createReadStream(fullHlsPath).pipe(res);
       }
+      return;
+    }
+
+    // POST /api/callback/hls/:id - workr HLS 轉檔完成回調
+    if (req.method === 'POST' && urlPath.startsWith('/api/callback/hls/')) {
+      const recordId = urlPath.replace('/api/callback/hls/', '');
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          console.log(`[HLS] Callback 收到: ${recordId}`, data.status);
+
+          if (data.status === 'completed' && data.result?.success) {
+            // 更新記錄
+            updateRecord(recordId, {
+              hlsReady: true,
+              hlsPath: `hls/${recordId}/master.m3u8`
+            });
+            console.log(`[HLS] ${recordId} 轉檔完成，已更新記錄`);
+            broadcastLog({ type: 'hls_complete', recordId });
+          } else if (data.status === 'failed') {
+            console.error(`[HLS] ${recordId} 轉檔失敗:`, data.error);
+            broadcastLog({ type: 'hls_error', recordId, error: data.error });
+          }
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true }));
+        } catch (e) {
+          console.error(`[HLS] Callback 解析失敗:`, e.message);
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: e.message }));
+        }
+      });
       return;
     }
 
