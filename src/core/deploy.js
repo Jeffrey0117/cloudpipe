@@ -151,7 +151,7 @@ function deleteProject(id) {
  * @param {number} retries - 重試次數（預設 3）
  * @param {number} delay - 重試間隔 ms（預設 2000）
  */
-async function performHealthCheck(port, endpoint = '/', log, retries = 3, delay = 2000) {
+async function performHealthCheck(port, endpoint = '/', log, retries = 5, delay = 3000) {
   const http = require('http');
   const url = `http://localhost:${port}${endpoint}`;
 
