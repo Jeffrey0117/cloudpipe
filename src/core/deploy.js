@@ -141,6 +141,50 @@ function deleteProject(id) {
   return true;
 }
 
+// ==================== Health Check ====================
+
+/**
+ * 執行 Health Check，確認服務啟動
+ * @param {number} port - 服務 port
+ * @param {string} endpoint - 檢查的 endpoint（預設 /）
+ * @param {function} log - log 函數
+ * @param {number} retries - 重試次數（預設 3）
+ * @param {number} delay - 重試間隔 ms（預設 2000）
+ */
+async function performHealthCheck(port, endpoint = '/', log, retries = 3, delay = 2000) {
+  const http = require('http');
+  const url = `http://localhost:${port}${endpoint}`;
+
+  for (let i = 0; i < retries; i++) {
+    // 等待服務啟動
+    await new Promise(r => setTimeout(r, delay));
+
+    try {
+      const result = await new Promise((resolve, reject) => {
+        const req = http.get(url, { timeout: 5000 }, (res) => {
+          // 2xx 或 3xx 都算成功
+          if (res.statusCode >= 200 && res.statusCode < 400) {
+            resolve(true);
+          } else {
+            reject(new Error(`HTTP ${res.statusCode}`));
+          }
+        });
+        req.on('error', reject);
+        req.on('timeout', () => {
+          req.destroy();
+          reject(new Error('Timeout'));
+        });
+      });
+
+      if (result) return true;
+    } catch (e) {
+      log(`Health Check 嘗試 ${i + 1}/${retries} 失敗: ${e.message}`);
+    }
+  }
+
+  return false;
+}
+
 // ==================== 部署引擎 ====================
 
 function generateDeployId() {
@@ -238,26 +282,32 @@ async function deploy(projectId, options = {}) {
     if (fs.existsSync(pkgPath)) {
       const nodeModulesPath = path.join(projectDir, 'node_modules');
       const lockPath = path.join(projectDir, 'package-lock.json');
+      const hashFile = path.join(projectDir, '.pkg-hash');
 
-      // 檢查是否需要重新安裝：
-      // 1. node_modules 不存在
-      // 2. package.json 比 node_modules 新（依賴有變更）
-      let needInstall = !fs.existsSync(nodeModulesPath);
+      // 計算 package.json + lock 的 hash
+      const pkgContent = fs.readFileSync(pkgPath, 'utf8');
+      const lockContent = fs.existsSync(lockPath) ? fs.readFileSync(lockPath, 'utf8') : '';
+      const currentHash = crypto.createHash('md5').update(pkgContent + lockContent).digest('hex');
 
-      if (!needInstall && fs.existsSync(lockPath)) {
-        const pkgMtime = fs.statSync(pkgPath).mtimeMs;
-        const lockMtime = fs.statSync(lockPath).mtimeMs;
-        const nodeModulesMtime = fs.statSync(nodeModulesPath).mtimeMs;
-        // 如果 package.json 或 lock 比 node_modules 新，需要重新安裝
-        if (pkgMtime > nodeModulesMtime || lockMtime > nodeModulesMtime) {
-          needInstall = true;
-          log(`偵測到依賴變更，重新安裝...`);
-        }
+      // 讀取上次安裝時的 hash
+      let lastHash = '';
+      if (fs.existsSync(hashFile)) {
+        lastHash = fs.readFileSync(hashFile, 'utf8').trim();
       }
 
+      // 檢查是否需要重新安裝
+      const needInstall = !fs.existsSync(nodeModulesPath) || currentHash !== lastHash;
+
       if (needInstall) {
+        if (currentHash !== lastHash && lastHash) {
+          log(`偵測到依賴變更 (hash changed)，重新安裝...`);
+        } else if (!fs.existsSync(nodeModulesPath)) {
+          log(`node_modules 不存在，執行安裝...`);
+        }
         log(`執行 npm install...`);
         execSync('npm install', { cwd: projectDir, stdio: 'pipe' });
+        // 儲存 hash
+        fs.writeFileSync(hashFile, currentHash);
         log(`依賴安裝完成`);
       }
     }
@@ -331,6 +381,16 @@ async function deploy(projectId, options = {}) {
           env: spawnEnv
         });
         log(`PM2 啟動完成 (port: ${project.port || 'default'})`);
+      }
+
+      // Health Check：確認服務啟動
+      if (project.port) {
+        log(`執行 Health Check (port: ${project.port})...`);
+        const healthCheckPassed = await performHealthCheck(project.port, project.healthEndpoint || '/', log);
+        if (!healthCheckPassed) {
+          throw new Error(`Health Check 失敗：服務未能在 port ${project.port} 啟動`);
+        }
+        log(`Health Check 通過`);
       }
     }
 
@@ -530,6 +590,111 @@ function listGitHubWebhooks(projectId) {
   }
 }
 
+// ==================== GitHub 輪詢（Backup 機制）====================
+
+/**
+ * 檢查 GitHub 最新 commit（使用 gh CLI）
+ */
+function getGitHubLatestCommit(owner, repo, branch) {
+  try {
+    const result = execSync(
+      `gh api repos/${owner}/${repo}/commits/${branch} --jq ".sha"`,
+      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+    );
+    return result.trim().substring(0, 7);
+  } catch (e) {
+    console.error(`[poll] 無法取得 ${owner}/${repo} 最新 commit:`, e.message);
+    return null;
+  }
+}
+
+/**
+ * 檢查單一專案是否需要部署
+ */
+async function checkProjectForUpdates(project) {
+  if (project.deployMethod !== 'github' && project.deployMethod !== 'git-url') {
+    return null;
+  }
+
+  const parsed = parseGitHubRepo(project.repoUrl);
+  if (!parsed) return null;
+
+  const { owner, repo } = parsed;
+  const remoteCommit = getGitHubLatestCommit(owner, repo, project.branch);
+
+  if (!remoteCommit) return null;
+
+  // 取得本地 commit
+  const projectDir = path.join(CLOUDPIPE_ROOT, project.directory);
+  let localCommit = null;
+  try {
+    if (fs.existsSync(projectDir)) {
+      localCommit = execSync('git rev-parse --short HEAD', { cwd: projectDir, encoding: 'utf8' }).trim();
+    }
+  } catch (e) {}
+
+  // 比較
+  if (remoteCommit !== localCommit) {
+    console.log(`[poll] 偵測到新 commit: ${project.id} (local: ${localCommit}, remote: ${remoteCommit})`);
+    return { project, localCommit, remoteCommit };
+  }
+
+  return null;
+}
+
+/**
+ * 輪詢所有專案檢查更新
+ */
+async function pollAllProjects() {
+  const projects = getAllProjects();
+  console.log(`[poll] 開始輪詢 ${projects.length} 個專案...`);
+
+  for (const project of projects) {
+    try {
+      const update = await checkProjectForUpdates(project);
+      if (update) {
+        console.log(`[poll] 觸發部署: ${project.id}`);
+        await deploy(project.id, { triggeredBy: 'poll' });
+      }
+    } catch (e) {
+      console.error(`[poll] 檢查 ${project.id} 失敗:`, e.message);
+    }
+  }
+
+  console.log(`[poll] 輪詢完成`);
+}
+
+// 輪詢定時器
+let pollInterval = null;
+
+/**
+ * 啟動定時輪詢（每 5 分鐘）
+ */
+function startPolling(intervalMs = 5 * 60 * 1000) {
+  if (pollInterval) {
+    clearInterval(pollInterval);
+  }
+
+  console.log(`[poll] 啟動定時輪詢 (間隔: ${intervalMs / 1000}s)`);
+
+  // 立即執行一次
+  setTimeout(() => pollAllProjects(), 10000);
+
+  // 設定定時輪詢
+  pollInterval = setInterval(pollAllProjects, intervalMs);
+}
+
+/**
+ * 停止定時輪詢
+ */
+function stopPolling() {
+  if (pollInterval) {
+    clearInterval(pollInterval);
+    pollInterval = null;
+    console.log(`[poll] 已停止定時輪詢`);
+  }
+}
+
 // ==================== 匯出 ====================
 
 module.exports = {
@@ -550,5 +715,11 @@ module.exports = {
   setupGitHubWebhook,
   removeGitHubWebhook,
   listGitHubWebhooks,
-  parseGitHubRepo
+  parseGitHubRepo,
+
+  // 輪詢
+  startPolling,
+  stopPolling,
+  pollAllProjects,
+  checkProjectForUpdates
 };

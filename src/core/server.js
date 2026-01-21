@@ -5,6 +5,7 @@
 
 const path = require('path');
 const ServiceRegistry = require('./registry');
+const deploy = require('./deploy');
 
 // 專案根目錄
 const rootDir = path.join(__dirname, '..', '..');
@@ -32,10 +33,14 @@ if (!registry.startAll()) {
   process.exit(1);
 }
 
+// 啟動 GitHub 輪詢（Backup 機制，每 5 分鐘）
+deploy.startPolling(5 * 60 * 1000);
+
 // Graceful shutdown
 process.on('SIGINT', () => {
   console.log('');
   console.log('[*] Shutting down...');
+  deploy.stopPolling();
   registry.stopAll();
   process.exit(0);
 });

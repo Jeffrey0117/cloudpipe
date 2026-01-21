@@ -695,13 +695,41 @@ function getDirSize(dirPath) {
   return size;
 }
 
+// Webhook Log 檔案路徑
+const WEBHOOK_LOG_FILE = path.join(__dirname, '../../data/deploy/webhook-logs.json');
+
+// 記錄 Webhook 接收
+function logWebhook(projectId, event, data = {}) {
+  const log = {
+    id: `wh_${Date.now().toString(36)}`,
+    projectId,
+    event,
+    timestamp: new Date().toISOString(),
+    ...data
+  };
+
+  let logs = [];
+  try {
+    logs = JSON.parse(fs.readFileSync(WEBHOOK_LOG_FILE, 'utf8')).logs || [];
+  } catch (e) {}
+
+  logs.unshift(log);
+  // 只保留最近 100 筆
+  logs = logs.slice(0, 100);
+
+  fs.writeFileSync(WEBHOOK_LOG_FILE, JSON.stringify({ logs }, null, 2));
+  console.log(`[webhook] ${event}: ${projectId}`, data.commit || data.reason || '');
+}
+
 // GitHub Webhook 處理
 async function handleWebhook(req, res, pathname) {
   // 從路徑取得專案 ID: /webhook/:projectId
   const projectId = pathname.replace('/webhook/', '');
+  const receivedAt = new Date().toISOString();
 
   const project = deploy.getProject(projectId);
   if (!project) {
+    logWebhook(projectId, 'rejected', { reason: '專案不存在' });
     res.writeHead(404, { 'content-type': 'application/json' });
     return res.end(JSON.stringify({ error: '專案不存在' }));
   }
@@ -715,7 +743,7 @@ async function handleWebhook(req, res, pathname) {
       if (project.webhookSecret) {
         const signature = req.headers['x-hub-signature-256'];
         if (!deploy.verifyGitHubWebhook(body, signature, project.webhookSecret)) {
-          console.log(`[webhook] 驗證失敗: ${projectId}`);
+          logWebhook(projectId, 'rejected', { reason: '簽名驗證失敗' });
           res.writeHead(401, { 'content-type': 'application/json' });
           return res.end(JSON.stringify({ error: 'Invalid signature' }));
         }
@@ -726,14 +754,17 @@ async function handleWebhook(req, res, pathname) {
       // 檢查是否為正確的 branch
       const ref = payload.ref || '';
       const branch = ref.replace('refs/heads/', '');
+      const commit = payload.after ? payload.after.substring(0, 7) : null;
+      const commitMessage = payload.head_commit?.message || '';
 
       if (branch !== project.branch) {
-        console.log(`[webhook] 忽略非目標 branch: ${branch} (目標: ${project.branch})`);
+        logWebhook(projectId, 'ignored', { reason: `非目標 branch: ${branch}`, branch });
         res.writeHead(200, { 'content-type': 'application/json' });
         return res.end(JSON.stringify({ ignored: true, reason: 'Wrong branch' }));
       }
 
-      console.log(`[webhook] 收到 push: ${projectId}, branch: ${branch}`);
+      // 記錄成功接收
+      logWebhook(projectId, 'received', { branch, commit, commitMessage: commitMessage.substring(0, 50) });
 
       // 回應 GitHub
       res.writeHead(200, { 'content-type': 'application/json' });
@@ -745,7 +776,7 @@ async function handleWebhook(req, res, pathname) {
       });
 
     } catch (err) {
-      console.error(`[webhook] 處理失敗: ${err.message}`);
+      logWebhook(projectId, 'error', { reason: err.message });
       res.writeHead(400, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ error: err.message }));
     }
