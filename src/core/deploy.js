@@ -237,8 +237,26 @@ async function deploy(projectId, options = {}) {
     const pkgPath = path.join(projectDir, 'package.json');
     if (fs.existsSync(pkgPath)) {
       const nodeModulesPath = path.join(projectDir, 'node_modules');
-      if (!fs.existsSync(nodeModulesPath)) {
-        log(`偵測到 package.json，執行 npm install...`);
+      const lockPath = path.join(projectDir, 'package-lock.json');
+
+      // 檢查是否需要重新安裝：
+      // 1. node_modules 不存在
+      // 2. package.json 比 node_modules 新（依賴有變更）
+      let needInstall = !fs.existsSync(nodeModulesPath);
+
+      if (!needInstall && fs.existsSync(lockPath)) {
+        const pkgMtime = fs.statSync(pkgPath).mtimeMs;
+        const lockMtime = fs.statSync(lockPath).mtimeMs;
+        const nodeModulesMtime = fs.statSync(nodeModulesPath).mtimeMs;
+        // 如果 package.json 或 lock 比 node_modules 新，需要重新安裝
+        if (pkgMtime > nodeModulesMtime || lockMtime > nodeModulesMtime) {
+          needInstall = true;
+          log(`偵測到依賴變更，重新安裝...`);
+        }
+      }
+
+      if (needInstall) {
+        log(`執行 npm install...`);
         execSync('npm install', { cwd: projectDir, stdio: 'pipe' });
         log(`依賴安裝完成`);
       }
