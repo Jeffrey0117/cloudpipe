@@ -140,6 +140,24 @@ module.exports = {
       return handleManualDeploy(req, res, id);
     }
 
+    // POST /api/_admin/deploy/projects/:id/webhook - 設定 GitHub Webhook
+    if (req.method === 'POST' && pathname.match(/^\/api\/_admin\/deploy\/projects\/[^/]+\/webhook$/)) {
+      const id = pathname.split('/')[5];
+      return handleSetupWebhook(req, res, id);
+    }
+
+    // DELETE /api/_admin/deploy/projects/:id/webhook - 刪除 GitHub Webhook
+    if (req.method === 'DELETE' && pathname.match(/^\/api\/_admin\/deploy\/projects\/[^/]+\/webhook$/)) {
+      const id = pathname.split('/')[5];
+      return handleRemoveWebhook(req, res, id);
+    }
+
+    // GET /api/_admin/deploy/projects/:id/webhooks - 列出 GitHub Webhooks
+    if (req.method === 'GET' && pathname.match(/^\/api\/_admin\/deploy\/projects\/[^/]+\/webhooks$/)) {
+      const id = pathname.split('/')[5];
+      return handleListWebhooks(req, res, id);
+    }
+
     // GET /api/_admin/deploy/deployments - 所有部署記錄
     if (req.method === 'GET' && pathname === '/api/_admin/deploy/deployments') {
       const deployments = deploy.getDeployments(null, 50);
@@ -499,6 +517,52 @@ async function handleManualDeploy(req, res, id) {
     deploy.deploy(id, { triggeredBy: 'manual' }).catch(err => {
       console.error(`[deploy] 部署失敗: ${err.message}`);
     });
+  } catch (err) {
+    res.writeHead(400, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: err.message }));
+  }
+}
+
+// 設定 GitHub Webhook
+async function handleSetupWebhook(req, res, id) {
+  let body = '';
+  req.on('data', chunk => body += chunk);
+  req.on('end', async () => {
+    try {
+      const { webhookUrl } = JSON.parse(body);
+      if (!webhookUrl) {
+        res.writeHead(400, { 'content-type': 'application/json' });
+        return res.end(JSON.stringify({ error: '缺少 webhookUrl' }));
+      }
+
+      const result = await deploy.setupGitHubWebhook(id, webhookUrl);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (err) {
+      res.writeHead(400, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    }
+  });
+}
+
+// 刪除 GitHub Webhook
+async function handleRemoveWebhook(req, res, id) {
+  try {
+    const result = await deploy.removeGitHubWebhook(id);
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(result));
+  } catch (err) {
+    res.writeHead(400, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: err.message }));
+  }
+}
+
+// 列出 GitHub Webhooks
+function handleListWebhooks(req, res, id) {
+  try {
+    const webhooks = deploy.listGitHubWebhooks(id);
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ webhooks }));
   } catch (err) {
     res.writeHead(400, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ error: err.message }));

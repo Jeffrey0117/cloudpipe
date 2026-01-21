@@ -584,8 +584,12 @@
 
           if (status === 'success') {
             const portInfo = data.project?.port ? ` (Port: ${data.project.port})` : '';
+            const hasWebhook = data.project?.webhookId;
+            const webhookBtn = hasWebhook
+              ? '<span style="color:#4ade80;font-size:0.85rem;">🔗 Webhook 已設定</span>'
+              : `<button onclick="setupWebhook('${projectId}')" style="margin-top:0.5rem;padding:0.5rem 1rem;background:#1e3a5f;border:none;color:#8ab4f8;border-radius:4px;cursor:pointer;">🔗 設定 GitHub Webhook</button>`;
             showToast('部署成功！' + portInfo, 'success');
-            document.getElementById('statusText').innerHTML = `✅ 部署成功！${portInfo}<br><a href="https://${projectId}.isnowfriend.com" target="_blank">${projectId}.isnowfriend.com</a>`;
+            document.getElementById('statusText').innerHTML = `✅ 部署成功！${portInfo}<br><a href="https://${projectId}.isnowfriend.com" target="_blank">${projectId}.isnowfriend.com</a><br>${webhookBtn}`;
             return;
           } else if (status === 'failed') {
             // 取得最新的部署記錄來顯示錯誤訊息
@@ -608,6 +612,36 @@
       };
 
       setTimeout(check, 2000);
+    }
+
+    // 設定 GitHub Webhook
+    async function setupWebhook(projectId) {
+      const webhookUrl = `https://epi.isnowfriend.com/webhook/${projectId}`;
+
+      try {
+        const res = await fetch(`/api/_admin/deploy/projects/${projectId}/webhook`, {
+          method: 'POST',
+          headers: {
+            'authorization': 'Bearer ' + authToken,
+            'content-type': 'application/json'
+          },
+          body: JSON.stringify({ webhookUrl })
+        });
+        const result = await res.json();
+
+        if (result.success) {
+          showToast('GitHub Webhook 已設定！', 'success');
+          // 更新按鈕狀態
+          document.getElementById('statusText').innerHTML = document.getElementById('statusText').innerHTML
+            .replace(/<button[^>]*>.*?<\/button>/, '<span style="color:#4ade80;font-size:0.85rem;">🔗 Webhook 已設定</span>');
+        } else if (result.alreadyExists) {
+          showToast('Webhook 已存在', 'success');
+        } else {
+          showToast('設定失敗: ' + (result.error || '未知錯誤'), 'error');
+        }
+      } catch (e) {
+        showToast('設定失敗: ' + e.message, 'error');
+      }
     }
 
     function hideUpload() {

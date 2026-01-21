@@ -402,6 +402,134 @@ function verifyGitHubWebhook(payload, signature, secret) {
   return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(digest));
 }
 
+// ==================== GitHub Webhook 自動設定 ====================
+
+// 從 repoUrl 解析 owner/repo
+function parseGitHubRepo(repoUrl) {
+  // 支援格式：
+  // https://github.com/owner/repo.git
+  // https://github.com/owner/repo
+  // git@github.com:owner/repo.git
+  const httpsMatch = repoUrl.match(/github\.com\/([^\/]+)\/([^\/\.]+)/);
+  const sshMatch = repoUrl.match(/github\.com:([^\/]+)\/([^\/\.]+)/);
+  const match = httpsMatch || sshMatch;
+  if (!match) return null;
+  return { owner: match[1], repo: match[2].replace('.git', '') };
+}
+
+// 設定 GitHub Webhook
+async function setupGitHubWebhook(projectId, webhookUrl) {
+  const project = getProject(projectId);
+  if (!project) {
+    throw new Error(`專案 "${projectId}" 不存在`);
+  }
+
+  const parsed = parseGitHubRepo(project.repoUrl);
+  if (!parsed) {
+    throw new Error(`無法解析 GitHub repo URL: ${project.repoUrl}`);
+  }
+
+  const { owner, repo } = parsed;
+  const secret = project.webhookSecret;
+
+  console.log(`[deploy] 設定 GitHub Webhook: ${owner}/${repo}`);
+
+  try {
+    // 使用 gh CLI 建立 webhook
+    const webhookConfig = JSON.stringify({
+      name: 'web',
+      active: true,
+      events: ['push'],
+      config: {
+        url: webhookUrl,
+        content_type: 'json',
+        secret: secret,
+        insecure_ssl: '0'
+      }
+    });
+
+    const result = execSync(
+      `gh api repos/${owner}/${repo}/hooks --method POST --input -`,
+      {
+        input: webhookConfig,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe']
+      }
+    );
+
+    const hookData = JSON.parse(result);
+    console.log(`[deploy] Webhook 已建立: ID ${hookData.id}`);
+
+    // 更新專案記錄
+    updateProject(projectId, { webhookId: hookData.id });
+
+    return { success: true, webhookId: hookData.id };
+  } catch (error) {
+    // 檢查是否是 webhook 已存在 (錯誤訊息可能在 stderr 或 message 中)
+    const errorOutput = (error.stderr?.toString() || '') + (error.message || '');
+    if (errorOutput.includes('Hook already exists') || errorOutput.includes('already exists')) {
+      console.log(`[deploy] Webhook 已存在，跳過建立`);
+      return { success: true, alreadyExists: true };
+    }
+    console.error(`[deploy] Webhook 設定失敗:`, errorOutput || error);
+    throw new Error(errorOutput || error.message);
+  }
+}
+
+// 刪除 GitHub Webhook
+async function removeGitHubWebhook(projectId) {
+  const project = getProject(projectId);
+  if (!project || !project.webhookId) {
+    return { success: false, error: '無 webhook 記錄' };
+  }
+
+  const parsed = parseGitHubRepo(project.repoUrl);
+  if (!parsed) {
+    return { success: false, error: '無法解析 repo URL' };
+  }
+
+  const { owner, repo } = parsed;
+
+  try {
+    execSync(
+      `gh api repos/${owner}/${repo}/hooks/${project.webhookId} --method DELETE`,
+      { stdio: 'pipe' }
+    );
+    console.log(`[deploy] Webhook 已刪除: ID ${project.webhookId}`);
+    updateProject(projectId, { webhookId: null });
+    return { success: true };
+  } catch (error) {
+    console.error(`[deploy] Webhook 刪除失敗:`, error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+// 列出專案的 GitHub Webhooks
+function listGitHubWebhooks(projectId) {
+  const project = getProject(projectId);
+  if (!project) {
+    throw new Error(`專案 "${projectId}" 不存在`);
+  }
+
+  const parsed = parseGitHubRepo(project.repoUrl);
+  if (!parsed) {
+    throw new Error(`無法解析 GitHub repo URL`);
+  }
+
+  const { owner, repo } = parsed;
+
+  try {
+    const result = execSync(
+      `gh api repos/${owner}/${repo}/hooks`,
+      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+    );
+    return JSON.parse(result);
+  } catch (error) {
+    console.error(`[deploy] 取得 webhooks 失敗:`, error.message);
+    return [];
+  }
+}
+
 // ==================== 匯出 ====================
 
 module.exports = {
@@ -418,5 +546,9 @@ module.exports = {
   getDeployment,
 
   // Webhook
-  verifyGitHubWebhook
+  verifyGitHubWebhook,
+  setupGitHubWebhook,
+  removeGitHubWebhook,
+  listGitHubWebhooks,
+  parseGitHubRepo
 };
