@@ -52,6 +52,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { pipeline } = require('stream/promises');
+const { spawn } = require('child_process');
 const sharp = require('sharp');
 
 // 備援下載模組 (Puppeteer - 在頁面 context 下載)
@@ -77,6 +78,11 @@ const REDEMPTIONS_FILE = path.join(DATA_DIR, 'redemptions.jsonl');
 const VIDEOS_DIR = path.join(DATA_DIR, 'videos');
 const IMAGES_DIR = path.join(DATA_DIR, 'images');
 const THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails');
+const HLS_DIR = path.join(DATA_DIR, 'hls');
+
+// HLS 轉檔佇列
+const hlsQueue = [];
+let hlsProcessing = false;
 
 // 修復服務設定
 const FREE_QUOTA = 3;
@@ -95,6 +101,245 @@ function broadcastLog(log) {
       sseClients.delete(client);
     }
   });
+}
+
+// ==================== HLS 轉檔系統 ====================
+
+// 確保 HLS 目錄存在
+if (!fs.existsSync(HLS_DIR)) {
+  fs.mkdirSync(HLS_DIR, { recursive: true });
+}
+
+// HLS 畫質設定
+const HLS_QUALITIES = [
+  { name: '1080p', height: 1080, bitrate: '5000k', audioBitrate: '192k', crf: 22 },
+  { name: '720p', height: 720, bitrate: '2500k', audioBitrate: '128k', crf: 23 },
+  { name: '480p', height: 480, bitrate: '1000k', audioBitrate: '96k', crf: 24 }
+];
+
+// 取得影片資訊
+function getVideoInfo(inputPath) {
+  return new Promise((resolve, reject) => {
+    const ffprobe = spawn('ffprobe', [
+      '-v', 'quiet',
+      '-print_format', 'json',
+      '-show_format',
+      '-show_streams',
+      inputPath
+    ]);
+
+    let stdout = '';
+    let stderr = '';
+
+    ffprobe.stdout.on('data', data => stdout += data);
+    ffprobe.stderr.on('data', data => stderr += data);
+
+    ffprobe.on('close', code => {
+      if (code !== 0) {
+        reject(new Error(`ffprobe failed: ${stderr}`));
+        return;
+      }
+      try {
+        const info = JSON.parse(stdout);
+        const videoStream = info.streams.find(s => s.codec_type === 'video');
+        resolve({
+          width: videoStream?.width || 1920,
+          height: videoStream?.height || 1080,
+          duration: parseFloat(info.format?.duration || 0)
+        });
+      } catch (e) {
+        reject(e);
+      }
+    });
+  });
+}
+
+// 單一畫質 HLS 轉檔
+function transcodeToHLS(inputPath, outputDir, quality, videoInfo) {
+  return new Promise((resolve, reject) => {
+    const qualityDir = path.join(outputDir, quality.name);
+    if (!fs.existsSync(qualityDir)) {
+      fs.mkdirSync(qualityDir, { recursive: true });
+    }
+
+    // 如果原始影片高度小於目標，跳過此畫質
+    if (videoInfo.height < quality.height && quality.height > 480) {
+      console.log(`[HLS] 跳過 ${quality.name}（原始 ${videoInfo.height}p < 目標 ${quality.height}p）`);
+      resolve({ skipped: true, quality: quality.name });
+      return;
+    }
+
+    const playlistPath = path.join(qualityDir, 'playlist.m3u8');
+    const segmentPattern = path.join(qualityDir, 'segment%03d.ts');
+
+    // 計算目標寬度（保持比例）
+    const targetHeight = Math.min(quality.height, videoInfo.height);
+    const targetWidth = Math.round(videoInfo.width * (targetHeight / videoInfo.height) / 2) * 2;
+
+    const args = [
+      '-i', inputPath,
+      '-vf', `scale=${targetWidth}:${targetHeight}`,
+      '-c:v', 'libx264',
+      '-preset', 'fast',
+      '-crf', String(quality.crf),
+      '-c:a', 'aac',
+      '-b:a', quality.audioBitrate,
+      '-hls_time', '6',
+      '-hls_list_size', '0',
+      '-hls_segment_filename', segmentPattern,
+      '-hls_playlist_type', 'vod',
+      '-y',
+      playlistPath
+    ];
+
+    console.log(`[HLS] 開始轉檔 ${quality.name}...`);
+    const ffmpeg = spawn('ffmpeg', args);
+
+    let stderr = '';
+    ffmpeg.stderr.on('data', data => {
+      stderr += data.toString();
+      // 解析進度
+      const timeMatch = stderr.match(/time=(\d+:\d+:\d+\.\d+)/g);
+      if (timeMatch) {
+        const lastTime = timeMatch[timeMatch.length - 1];
+        broadcastLog({ type: 'hls_progress', quality: quality.name, time: lastTime });
+      }
+    });
+
+    ffmpeg.on('close', code => {
+      if (code !== 0) {
+        console.error(`[HLS] ${quality.name} 轉檔失敗:`, stderr.slice(-500));
+        reject(new Error(`FFmpeg failed for ${quality.name}`));
+        return;
+      }
+      console.log(`[HLS] ${quality.name} 轉檔完成`);
+      resolve({ skipped: false, quality: quality.name, playlist: playlistPath });
+    });
+  });
+}
+
+// 產生 master.m3u8
+function generateMasterPlaylist(outputDir, qualities, videoInfo) {
+  const lines = ['#EXTM3U', '#EXT-X-VERSION:3', ''];
+
+  for (const q of qualities) {
+    // 跳過比原始畫質高的（除了 480p 保底）
+    if (videoInfo.height < q.height && q.height > 480) continue;
+
+    const targetHeight = Math.min(q.height, videoInfo.height);
+    const targetWidth = Math.round(videoInfo.width * (targetHeight / videoInfo.height) / 2) * 2;
+    const bandwidth = parseInt(q.bitrate) * 1000;
+
+    lines.push(`#EXT-X-STREAM-INF:BANDWIDTH=${bandwidth},RESOLUTION=${targetWidth}x${targetHeight},NAME="${q.name}"`);
+    lines.push(`${q.name}/playlist.m3u8`);
+    lines.push('');
+  }
+
+  const masterPath = path.join(outputDir, 'master.m3u8');
+  fs.writeFileSync(masterPath, lines.join('\n'));
+  return masterPath;
+}
+
+// 完整 HLS 轉檔流程
+async function processHLSTranscode(recordId) {
+  const records = readAllRecords();
+  const record = records.find(r => r.id === recordId);
+
+  if (!record || record.type !== 'video') {
+    console.log(`[HLS] 跳過 ${recordId}：非影片或不存在`);
+    return { success: false, error: 'Not a video' };
+  }
+
+  const inputPath = path.join(DATA_DIR, record.backupPath);
+  if (!fs.existsSync(inputPath)) {
+    console.log(`[HLS] 跳過 ${recordId}：原始檔案不存在`);
+    return { success: false, error: 'Source file not found' };
+  }
+
+  const outputDir = path.join(HLS_DIR, recordId);
+
+  // 檢查是否已轉檔
+  if (fs.existsSync(path.join(outputDir, 'master.m3u8'))) {
+    console.log(`[HLS] 跳過 ${recordId}：已存在 HLS 版本`);
+    return { success: true, skipped: true };
+  }
+
+  try {
+    console.log(`[HLS] 開始處理 ${recordId}...`);
+    broadcastLog({ type: 'hls_start', recordId, title: record.title });
+
+    // 取得影片資訊
+    const videoInfo = await getVideoInfo(inputPath);
+    console.log(`[HLS] 影片資訊: ${videoInfo.width}x${videoInfo.height}, ${videoInfo.duration}s`);
+
+    // 建立輸出目錄
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+
+    // 依序轉檔各畫質（避免同時佔用太多資源）
+    const results = [];
+    for (const quality of HLS_QUALITIES) {
+      try {
+        const result = await transcodeToHLS(inputPath, outputDir, quality, videoInfo);
+        results.push(result);
+      } catch (e) {
+        console.error(`[HLS] ${quality.name} 失敗:`, e.message);
+        results.push({ skipped: false, quality: quality.name, error: e.message });
+      }
+    }
+
+    // 產生 master playlist
+    generateMasterPlaylist(outputDir, HLS_QUALITIES, videoInfo);
+
+    // 更新記錄
+    updateRecord(recordId, { hlsReady: true, hlsPath: `hls/${recordId}/master.m3u8` });
+
+    console.log(`[HLS] ${recordId} 處理完成`);
+    broadcastLog({ type: 'hls_complete', recordId, title: record.title });
+
+    return { success: true, results };
+  } catch (error) {
+    console.error(`[HLS] ${recordId} 處理失敗:`, error);
+    broadcastLog({ type: 'hls_error', recordId, error: error.message });
+    return { success: false, error: error.message };
+  }
+}
+
+// HLS 轉檔佇列處理
+async function processHLSQueue() {
+  if (hlsProcessing || hlsQueue.length === 0) return;
+
+  hlsProcessing = true;
+
+  while (hlsQueue.length > 0) {
+    const recordId = hlsQueue.shift();
+    try {
+      await processHLSTranscode(recordId);
+    } catch (e) {
+      console.error(`[HLS] 佇列處理錯誤:`, e);
+    }
+  }
+
+  hlsProcessing = false;
+}
+
+// 加入 HLS 轉檔佇列
+function queueHLSTranscode(recordId) {
+  if (!hlsQueue.includes(recordId)) {
+    hlsQueue.push(recordId);
+    console.log(`[HLS] 加入佇列: ${recordId}，目前 ${hlsQueue.length} 個待處理`);
+    processHLSQueue();
+  }
+}
+
+// 取得 HLS 狀態
+function getHLSStatus() {
+  return {
+    processing: hlsProcessing,
+    queue: hlsQueue.length,
+    currentItem: hlsProcessing && hlsQueue.length > 0 ? hlsQueue[0] : null
+  };
 }
 
 // ==================== 安全函數 ====================
@@ -376,6 +621,19 @@ function updateRecordBackupPath(id, backupPath) {
   });
   fs.writeFileSync(RECORDS_FILE, updated.map(r => JSON.stringify(r)).join('\n') + '\n', 'utf8');
   console.log(`[lurl] 記錄已更新備份路徑: ${id} -> ${backupPath}`);
+}
+
+// 通用記錄更新函數
+function updateRecord(id, updates) {
+  const records = readAllRecords();
+  const updated = records.map(r => {
+    if (r.id === id) {
+      return { ...r, ...updates };
+    }
+    return r;
+  });
+  fs.writeFileSync(RECORDS_FILE, updated.map(r => JSON.stringify(r)).join('\n') + '\n', 'utf8');
+  console.log(`[lurl] 記錄已更新: ${id}`, Object.keys(updates));
 }
 
 function readAllRecords() {
@@ -792,6 +1050,7 @@ function adminPage() {
       <button class="main-tab active" data-tab="records">📋 記錄</button>
       <button class="main-tab" data-tab="users">👥 使用者</button>
       <button class="main-tab" data-tab="redemptions">🎁 兌換碼</button>
+      <button class="main-tab" data-tab="hls">🎬 HLS</button>
       <button class="main-tab" data-tab="version">📦 版本</button>
       <button class="main-tab" data-tab="maintenance">🔧 維護</button>
     </div>
@@ -956,6 +1215,57 @@ function adminPage() {
       </div>
     </div>
 
+    <!-- HLS Tab -->
+    <div class="tab-content" id="tab-hls">
+      <div class="version-panel" style="margin-bottom:20px;">
+        <h2>🎬 HLS 串流轉檔</h2>
+        <p style="color:#666; margin-bottom:20px;">將影片轉換為多畫質 HLS 串流格式，支援自適應畫質切換，大幅改善播放體驗。</p>
+
+        <!-- HLS 統計 -->
+        <div class="user-stats" style="grid-template-columns: repeat(4, 1fr); margin-bottom:20px;">
+          <div class="user-stat">
+            <div class="value" id="hlsTotal">-</div>
+            <div class="label">影片總數</div>
+          </div>
+          <div class="user-stat">
+            <div class="value green" id="hlsReady">-</div>
+            <div class="label">已轉檔</div>
+          </div>
+          <div class="user-stat">
+            <div class="value orange" id="hlsPending">-</div>
+            <div class="label">待轉檔</div>
+          </div>
+          <div class="user-stat">
+            <div class="value" id="hlsQueue">-</div>
+            <div class="label">佇列中</div>
+          </div>
+        </div>
+
+        <!-- 操作按鈕 -->
+        <div style="display:flex; gap:12px; margin-bottom:20px;">
+          <button class="btn btn-primary" onclick="transcodeAllHLS()">🚀 全部轉檔</button>
+          <button class="btn" style="background:#e0e0e0;" onclick="refreshHLSStats()">🔄 刷新狀態</button>
+        </div>
+
+        <!-- 轉檔進度 -->
+        <div id="hlsProgress" style="display:none; background:#f5f5f5; padding:15px; border-radius:8px; margin-bottom:20px;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+            <span id="hlsProgressTitle">轉檔中...</span>
+            <span id="hlsProgressTime">00:00:00</span>
+          </div>
+          <div style="background:#ddd; height:8px; border-radius:4px; overflow:hidden;">
+            <div id="hlsProgressBar" style="background:#4caf50; height:100%; width:0%; transition:width 0.3s;"></div>
+          </div>
+        </div>
+
+        <!-- 未轉檔列表 -->
+        <h3 style="margin-bottom:12px;">待轉檔影片</h3>
+        <div class="records" id="hlsPendingList" style="max-height:400px; overflow-y:auto;">
+          <div class="empty">載入中...</div>
+        </div>
+      </div>
+    </div>
+
     <!-- 版本 Tab -->
     <div class="tab-content" id="tab-version">
       <div class="version-panel" style="margin-bottom:0;">
@@ -1077,12 +1387,13 @@ function adminPage() {
       // 載入資料
       if (tabName === 'users') loadUsers();
       if (tabName === 'redemptions') loadRedemptions();
+      if (tabName === 'hls') refreshHLSStats();
     }
 
     // 根據 URL hash 切換 tab
     function checkHashAndSwitch() {
       const hash = window.location.hash.replace('#', '') || 'records';
-      if (['records', 'users', 'redemptions', 'version', 'maintenance'].includes(hash)) {
+      if (['records', 'users', 'redemptions', 'hls', 'version', 'maintenance'].includes(hash)) {
         switchMainTab(hash);
       }
     }
@@ -1471,6 +1782,108 @@ function adminPage() {
       }
     }
 
+    // ==================== HLS 管理 ====================
+    let hlsRecords = [];
+
+    async function refreshHLSStats() {
+      try {
+        // 取得記錄
+        const recordsRes = await fetch('/lurl/api/records');
+        const recordsData = await recordsRes.json();
+        const videos = recordsData.records.filter(r => r.type === 'video' && r.fileExists !== false);
+        hlsRecords = videos;
+
+        // 取得 HLS 佇列狀態
+        const statusRes = await fetch('/lurl/api/hls/status');
+        const status = await statusRes.json();
+
+        const hlsReadyCount = videos.filter(r => r.hlsReady).length;
+        const hlsPendingCount = videos.filter(r => !r.hlsReady).length;
+
+        document.getElementById('hlsTotal').textContent = videos.length;
+        document.getElementById('hlsReady').textContent = hlsReadyCount;
+        document.getElementById('hlsPending').textContent = hlsPendingCount;
+        document.getElementById('hlsQueue').textContent = status.queue;
+
+        // 顯示進度
+        if (status.processing) {
+          document.getElementById('hlsProgress').style.display = 'block';
+        } else {
+          document.getElementById('hlsProgress').style.display = 'none';
+        }
+
+        // 渲染待轉檔列表
+        renderHLSPendingList();
+      } catch (e) {
+        console.error('載入 HLS 狀態失敗:', e);
+      }
+    }
+
+    function renderHLSPendingList() {
+      const pending = hlsRecords.filter(r => !r.hlsReady);
+      if (pending.length === 0) {
+        document.getElementById('hlsPendingList').innerHTML = '<div class="empty">🎉 所有影片已轉檔完成！</div>';
+        return;
+      }
+
+      const getTitle = (t) => (!t || t === 'untitled' || t === 'undefined') ? '未命名' : t;
+      document.getElementById('hlsPendingList').innerHTML = pending.slice(0, 50).map(r => \`
+        <div class="record" data-id="\${r.id}">
+          <div class="record-thumb video">🎬</div>
+          <div class="record-info">
+            <div class="record-title">\${getTitle(r.title)}</div>
+            <div class="record-meta">\${new Date(r.capturedAt).toLocaleString()}</div>
+          </div>
+          <div class="record-actions">
+            <button class="btn btn-sm btn-primary" onclick="transcodeOne('\${r.id}')">轉檔</button>
+          </div>
+        </div>
+      \`).join('');
+    }
+
+    async function transcodeOne(recordId) {
+      try {
+        showToast('已加入轉檔佇列...', 'success');
+        await fetch('/lurl/api/hls/transcode/' + recordId, { method: 'POST' });
+        setTimeout(refreshHLSStats, 1000);
+      } catch (e) {
+        showToast('加入佇列失敗', 'error');
+      }
+    }
+
+    async function transcodeAllHLS() {
+      if (!confirm('確定要轉檔所有未處理的影片？這可能需要較長時間。')) return;
+      try {
+        const res = await fetch('/lurl/api/hls/transcode-all', { method: 'POST' });
+        const data = await res.json();
+        showToast('已加入 ' + data.queued + ' 個影片到轉檔佇列', 'success');
+        document.getElementById('hlsProgress').style.display = 'block';
+        setTimeout(refreshHLSStats, 2000);
+      } catch (e) {
+        showToast('批次轉檔失敗', 'error');
+      }
+    }
+
+    // 監聽 HLS 進度 (SSE)
+    function listenHLSProgress() {
+      const eventSource = new EventSource('/lurl/api/logs');
+      eventSource.onmessage = function(event) {
+        try {
+          const log = JSON.parse(event.data);
+          if (log.type === 'hls_progress') {
+            document.getElementById('hlsProgressTitle').textContent = '轉檔 ' + log.quality + '...';
+            document.getElementById('hlsProgressTime').textContent = log.time || '';
+          } else if (log.type === 'hls_complete') {
+            showToast('轉檔完成: ' + (log.title || log.recordId), 'success');
+            refreshHLSStats();
+          } else if (log.type === 'hls_start') {
+            document.getElementById('hlsProgress').style.display = 'block';
+            document.getElementById('hlsProgressTitle').textContent = '開始轉檔: ' + (log.title || log.recordId);
+          }
+        } catch (e) {}
+      };
+    }
+
     // 設定維護狀態的 helper
     function setStatus(id, text, type = '') {
       const el = document.getElementById(id);
@@ -1788,6 +2201,7 @@ function adminPage() {
     loadRetryStatus();
     checkHashAndSwitch();
     restoreScrollPosition();
+    listenHLSProgress();
   </script>
 </body>
 </html>`;
@@ -2947,9 +3361,7 @@ function viewPage(record, fileExists) {
     <div class="media-container">
       ${fileExists
         ? (isVideo
-          ? `<video id="player" playsinline controls>
-              <source src="/lurl/files/${record.backupPath}" type="video/mp4">
-            </video>`
+          ? `<video id="player" playsinline controls></video>`
           : `<img src="/lurl/files/${record.backupPath}" alt="${title}">`)
         : `<div class="media-missing">
             <p>⚠️ 檔案尚未下載成功</p>
@@ -2957,6 +3369,11 @@ function viewPage(record, fileExists) {
           </div>`
       }
     </div>
+    ${isVideo && fileExists ? `
+    <div class="quality-info" style="text-align:center; margin-bottom:10px; font-size:0.85em; color:#666;">
+      ${record.hlsReady ? '🎬 HLS 串流（可選畫質）' : '📹 原始檔案'}
+    </div>
+    ` : ''}
     <div class="info">
       <h2>${title}</h2>
       <div class="info-row"><span>類型：</span>${isVideo ? '影片' : '圖片'}</div>
@@ -3075,29 +3492,107 @@ function viewPage(record, fileExists) {
   </script>
   ${isVideo && fileExists ? `
   <script src="https://cdn.plyr.io/3.7.8/plyr.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <script>
-    // 初始化 Plyr
-    const player = new Plyr('#player', {
-      controls: [
-        'play-large', 'play', 'progress', 'current-time', 'mute',
-        'volume', 'settings', 'pip', 'fullscreen'
-      ],
-      settings: ['speed'],
-      speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
-      keyboard: { focused: true, global: true },
-      storage: { enabled: true, key: 'plyr' }
-    });
+    const video = document.getElementById('player');
+    const hlsReady = ${record.hlsReady || false};
+    const hlsUrl = '/lurl/hls/${record.id}/master.m3u8';
+    const mp4Url = '/lurl/files/${record.backupPath}';
 
-    // 檢查靜音模式
-    const globalMuted = localStorage.getItem('lurl_muted') === 'true';
-    if (globalMuted) {
-      player.muted = true;
+    let hls = null;
+
+    function initPlayer() {
+      const plyrOptions = {
+        controls: [
+          'play-large', 'play', 'progress', 'current-time', 'mute',
+          'volume', 'settings', 'pip', 'fullscreen'
+        ],
+        settings: ['quality', 'speed'],
+        speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
+        keyboard: { focused: true, global: true },
+        storage: { enabled: true, key: 'plyr' }
+      };
+
+      // HLS 模式：使用 hls.js
+      if (hlsReady && Hls.isSupported()) {
+        hls = new Hls({
+          maxBufferLength: 30,
+          maxMaxBufferLength: 60
+        });
+        hls.loadSource(hlsUrl);
+        hls.attachMedia(video);
+
+        hls.on(Hls.Events.MANIFEST_PARSED, function(event, data) {
+          // 設定畫質選項
+          const availableQualities = hls.levels.map(l => l.height);
+          availableQualities.unshift(0); // 自動
+
+          plyrOptions.quality = {
+            default: 0,
+            options: availableQualities,
+            forced: true,
+            onChange: (quality) => updateQuality(quality)
+          };
+
+          plyrOptions.i18n = {
+            qualityLabel: { 0: '自動' }
+          };
+
+          const player = new Plyr(video, plyrOptions);
+          setupPlayer(player);
+        });
+
+        hls.on(Hls.Events.ERROR, function(event, data) {
+          if (data.fatal) {
+            console.error('HLS 錯誤，切換到原始檔案', data);
+            hls.destroy();
+            video.src = mp4Url;
+            const player = new Plyr(video, plyrOptions);
+            setupPlayer(player);
+          }
+        });
+      }
+      // Safari 原生 HLS 支援
+      else if (hlsReady && video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = hlsUrl;
+        const player = new Plyr(video, plyrOptions);
+        setupPlayer(player);
+      }
+      // 原始 MP4
+      else {
+        video.src = mp4Url;
+        const player = new Plyr(video, plyrOptions);
+        setupPlayer(player);
+      }
     }
 
-    // 自動播放
-    player.on('ready', () => {
-      player.play().catch(() => {});
-    });
+    function updateQuality(newQuality) {
+      if (!hls) return;
+      if (newQuality === 0) {
+        hls.currentLevel = -1; // 自動
+      } else {
+        hls.levels.forEach((level, index) => {
+          if (level.height === newQuality) {
+            hls.currentLevel = index;
+          }
+        });
+      }
+    }
+
+    function setupPlayer(player) {
+      // 檢查靜音模式
+      const globalMuted = localStorage.getItem('lurl_muted') === 'true';
+      if (globalMuted) {
+        player.muted = true;
+      }
+
+      // 自動播放
+      player.on('ready', () => {
+        player.play().catch(() => {});
+      });
+    }
+
+    initPlayer();
   </script>
   ` : ''}
 </body>
@@ -3294,7 +3789,14 @@ module.exports = {
               if (thumbOk) {
                 updateRecordThumbnail(id, `thumbnails/${thumbFilename}`);
               }
-            } else if (type === 'image') {
+            }
+
+            // 影片下載成功後自動加入 HLS 轉檔佇列
+            if (type === 'video') {
+              queueHLSTranscode(id);
+            }
+
+            if (type === 'image') {
               // 圖片：用 sharp 產生縮圖
               const thumbPath = await processImage(videoFullPath, id);
               if (thumbPath) {
@@ -3637,6 +4139,11 @@ module.exports = {
                 if (thumbPath) updateRecordThumbnail(id, thumbPath);
               });
             }
+
+            // 影片上傳完成後自動加入 HLS 轉檔佇列
+            if (record.type === 'video') {
+              queueHLSTranscode(id);
+            }
           }
 
           res.writeHead(200, corsHeaders());
@@ -3651,6 +4158,11 @@ module.exports = {
             processImage(destPath, id).then(thumbPath => {
               if (thumbPath) updateRecordThumbnail(id, thumbPath);
             });
+          }
+
+          // 影片上傳完成後自動加入 HLS 轉檔佇列
+          if (record.type === 'video') {
+            queueHLSTranscode(id);
           }
 
           res.writeHead(200, corsHeaders());
@@ -5176,6 +5688,76 @@ module.exports = {
         res.writeHead(200, corsHeaders());
         res.end(JSON.stringify({ ok: false, error: '下載失敗，CDN 可能已過期' }));
       }
+      return;
+    }
+
+    // GET/HEAD /hls/:recordId/* - HLS 串流檔案
+    if ((req.method === 'GET' || req.method === 'HEAD') && urlPath.startsWith('/hls/')) {
+      const hlsPath = decodeURIComponent(urlPath.replace('/hls/', ''));
+      const fullHlsPath = path.join(HLS_DIR, hlsPath);
+
+      if (!fs.existsSync(fullHlsPath) || fs.statSync(fullHlsPath).isDirectory()) {
+        res.writeHead(404, corsHeaders());
+        res.end(JSON.stringify({ error: 'HLS file not found' }));
+        return;
+      }
+
+      const ext = path.extname(fullHlsPath).toLowerCase();
+      const mimeTypes = {
+        '.m3u8': 'application/vnd.apple.mpegurl',
+        '.ts': 'video/mp2t'
+      };
+      const contentType = mimeTypes[ext] || 'application/octet-stream';
+      const stat = fs.statSync(fullHlsPath);
+
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Content-Length': stat.size,
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': ext === '.m3u8' ? 'no-cache' : 'public, max-age=31536000, immutable'
+      });
+
+      if (req.method === 'HEAD') {
+        res.end();
+      } else {
+        fs.createReadStream(fullHlsPath).pipe(res);
+      }
+      return;
+    }
+
+    // POST /api/hls/transcode/:id - 觸發 HLS 轉檔
+    if (req.method === 'POST' && urlPath.startsWith('/api/hls/transcode/')) {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+        return;
+      }
+      const recordId = urlPath.replace('/api/hls/transcode/', '');
+      queueHLSTranscode(recordId);
+      res.writeHead(200, corsHeaders());
+      res.end(JSON.stringify({ ok: true, message: '已加入轉檔佇列' }));
+      return;
+    }
+
+    // POST /api/hls/transcode-all - 批次轉檔所有影片
+    if (req.method === 'POST' && urlPath === '/api/hls/transcode-all') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+        return;
+      }
+      const records = readAllRecords();
+      const videos = records.filter(r => r.type === 'video' && r.fileExists !== false && !r.hlsReady);
+      videos.forEach(r => queueHLSTranscode(r.id));
+      res.writeHead(200, corsHeaders());
+      res.end(JSON.stringify({ ok: true, queued: videos.length }));
+      return;
+    }
+
+    // GET /api/hls/status - 取得 HLS 轉檔狀態
+    if (req.method === 'GET' && urlPath === '/api/hls/status') {
+      res.writeHead(200, corsHeaders());
+      res.end(JSON.stringify(getHLSStatus()));
       return;
     }
 

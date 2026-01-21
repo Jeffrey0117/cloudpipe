@@ -1,6 +1,6 @@
 {
-  "latestVersion": "5.2",
-  "minVersion": "4.0.0",
+  "latestVersion": "5.3.8",
+  "minVersion": "5.2",
   "message": "修正跨網域 ID 問題 + 好評領額度功能",
   "updateUrl": "https://github.com/Jeffrey0117/tampermonkey-lurl-download/raw/main/lurlDownloader.user.js",
   "forceUpdate": false,
