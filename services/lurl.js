@@ -126,7 +126,7 @@ function getVideoInfo(inputPath) {
       '-show_format',
       '-show_streams',
       inputPath
-    ]);
+    ], { windowsHide: true });
 
     let stdout = '';
     let stderr = '';
@@ -193,7 +193,7 @@ function transcodeToHLS(inputPath, outputDir, quality, videoInfo) {
     ];
 
     console.log(`[HLS] 開始轉檔 ${quality.name}...`);
-    const ffmpeg = spawn('ffmpeg', args);
+    const ffmpeg = spawn('ffmpeg', args, { windowsHide: true });
 
     let stderr = '';
     ffmpeg.stderr.on('data', data => {
@@ -531,7 +531,7 @@ async function generateVideoThumbnail(videoPath, thumbnailPath) {
     // ffmpeg 擷取第 1 秒的畫面，輸出 PNG（後續用 sharp 轉 WebP）
     const tempPath = thumbnailPath.replace(/\.\w+$/, '_temp.png');
     const cmd = `ffmpeg -i "${videoPath}" -ss 00:00:01 -vframes 1 -vf "scale=320:-1" -y "${tempPath}"`;
-    await execAsync(cmd, { timeout: 30000 });
+    await execAsync(cmd, { timeout: 30000, windowsHide: true });
 
     if (fs.existsSync(tempPath)) {
       // 用 sharp 轉成 WebP 並壓縮

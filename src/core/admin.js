@@ -158,6 +158,12 @@ module.exports = {
       return handleListWebhooks(req, res, id);
     }
 
+    // GET /api/_admin/deploy/logs/:pm2Name - 取得 PM2 log
+    if (req.method === 'GET' && pathname.match(/^\/api\/_admin\/deploy\/logs\/[^/]+$/)) {
+      const pm2Name = pathname.split('/').pop();
+      return handleGetPM2Logs(req, res, pm2Name);
+    }
+
     // GET /api/_admin/deploy/deployments - 所有部署記錄
     if (req.method === 'GET' && pathname === '/api/_admin/deploy/deployments') {
       const deployments = deploy.getDeployments(null, 50);
@@ -565,6 +571,40 @@ function handleListWebhooks(req, res, id) {
     res.end(JSON.stringify({ webhooks }));
   } catch (err) {
     res.writeHead(400, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: err.message }));
+  }
+}
+
+// 取得 PM2 Log
+function handleGetPM2Logs(req, res, pm2Name) {
+  try {
+    // 讀取 PM2 log 檔案
+    const pm2LogPath = path.join(process.env.USERPROFILE || process.env.HOME, '.pm2', 'logs');
+    const outLogPath = path.join(pm2LogPath, `${pm2Name}-out.log`);
+    const errLogPath = path.join(pm2LogPath, `${pm2Name}-error.log`);
+
+    let logs = '';
+
+    // 讀取最後 100 行 out log
+    if (fs.existsSync(outLogPath)) {
+      const content = fs.readFileSync(outLogPath, 'utf8');
+      const lines = content.split('\n').slice(-100).join('\n');
+      logs += '=== stdout ===\n' + lines + '\n\n';
+    }
+
+    // 讀取最後 50 行 error log
+    if (fs.existsSync(errLogPath)) {
+      const content = fs.readFileSync(errLogPath, 'utf8');
+      const lines = content.split('\n').slice(-50).join('\n');
+      if (lines.trim()) {
+        logs += '=== stderr ===\n' + lines;
+      }
+    }
+
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ logs: logs || '無 log 檔案' }));
+  } catch (err) {
+    res.writeHead(500, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ error: err.message }));
   }
 }

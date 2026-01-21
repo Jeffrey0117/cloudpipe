@@ -85,6 +85,7 @@
       flex-shrink: 0;
     }
     .service-status.running { background: #14532d; color: #4ade80; }
+    .service-status.failed { background: #5c2626; color: #f87171; }
 
     /* System Info Section */
     .system-info { margin-bottom: 2.5rem; }
@@ -136,6 +137,30 @@
     .deployed-item a.btn.admin:hover { background: #2a4a7f; color: #fff; }
     .empty { text-align: center; color: #555; padding: 2rem; }
 
+    /* Project Detail Modal */
+    .project-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+    .project-modal-content { background: #1a1a1a; border-radius: 12px; width: 100%; max-width: 600px; max-height: 85vh; overflow: hidden; display: flex; flex-direction: column; }
+    .project-modal-header { padding: 20px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; }
+    .project-modal-header h2 { margin: 0; color: #fff; font-size: 1.25rem; }
+    .project-modal-body { flex: 1; overflow-y: auto; padding: 20px; }
+    .project-modal-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px; }
+    .project-modal-actions button, .project-modal-actions a {
+      padding: 12px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.9rem; text-align: center; text-decoration: none; display: block;
+    }
+    .project-modal-actions .primary { background: #4ade80; color: #000; }
+    .project-modal-actions .secondary { background: #252525; color: #fff; }
+    .project-modal-actions .danger { background: #5c2626; color: #f87171; }
+    .deploy-history { margin-top: 10px; }
+    .deploy-history h4 { color: #888; font-size: 0.85rem; margin-bottom: 10px; }
+    .deploy-item { background: #252525; border-radius: 8px; padding: 12px; margin-bottom: 8px; }
+    .deploy-item .row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+    .deploy-item .status { font-weight: 500; }
+    .deploy-item .status.success { color: #4ade80; }
+    .deploy-item .status.failed { color: #f87171; }
+    .deploy-item .time { color: #666; font-size: 0.85rem; }
+    .deploy-item .commit { color: #888; font-size: 0.85rem; }
+    .deploy-item .error { color: #f87171; font-size: 0.8rem; margin-top: 8px; padding: 8px; background: #2a1515; border-radius: 4px; }
+
     @media (max-width: 600px) {
       .info-grid { grid-template-columns: 1fr; }
       .services-grid { grid-template-columns: 1fr; }
@@ -161,7 +186,7 @@
         <div class="service-card" onclick="window.location.href='/_admin/lurlhub'">
           <div class="service-icon">🎬</div>
           <div class="service-info">
-            <div class="service-name">LurlHub</div>
+            <div class="service-name">LurlHub <span style="color:#8ab4f8;font-size:0.8em;">:8787</span></div>
             <div class="service-desc">影片/圖片備份服務</div>
             <div class="service-stats" id="lurlStats">載入中...</div>
           </div>
@@ -186,14 +211,6 @@
           <div class="info-label">運行時間</div>
           <div class="info-value" id="uptime">--</div>
         </div>
-      </div>
-    </section>
-
-    <!-- Git 部署專案 -->
-    <section class="deployed">
-      <h3 class="section-title">Git 部署專案</h3>
-      <div class="deployed-list" id="gitProjectsList">
-        <div class="empty">載入中...</div>
       </div>
     </section>
 
@@ -288,17 +305,39 @@
     // 載入已部署
     async function loadDeployed() {
       try {
-        const res = await fetch('/api/_admin/services', {
-          headers: { 'authorization': 'Bearer ' + authToken }
-        });
-        const data = await res.json();
+        // 同時取得 services/apps 和 Git 專案
+        const [servicesRes, projectsRes] = await Promise.all([
+          fetch('/api/_admin/services', { headers: { 'authorization': 'Bearer ' + authToken } }),
+          fetch('/api/_admin/deploy/projects', { headers: { 'authorization': 'Bearer ' + authToken } })
+        ]);
+        const data = await servicesRes.json();
+        const projectsData = await projectsRes.json();
+        const gitProjects = projectsData.projects || [];
 
-        if (data.services.length === 0 && data.apps.length === 0) {
+        if (data.services.length === 0 && data.apps.length === 0 && gitProjects.length === 0) {
           document.getElementById('deployedList').innerHTML = '<div class="empty">尚無部署</div>';
           return;
         }
 
         let html = '';
+        // Git 專案
+        gitProjects.forEach(p => {
+          const isSuccess = p.lastDeployStatus === 'success';
+          const statusClass = isSuccess ? '' : 'style="color:#f87171;"';
+          const statusText = isSuccess ? '運行中' : '部署失敗';
+          const lastDeploy = p.lastDeployAt ? new Date(p.lastDeployAt).toLocaleString('zh-TW') : '-';
+          html += `<div class="deployed-item">
+            <div class="info"><span class="icon">🚀</span><div>
+              <div class="name"><a href="https://${p.id}.isnowfriend.com" target="_blank" style="color:#fff;text-decoration:none;">${p.name || p.id}</a>${p.port ? ` <span style="color:#8ab4f8;font-size:0.8em;">:${p.port}</span>` : ''}</div>
+              <div class="url">Git 部署 · ${lastDeploy}</div></div></div>
+            <div class="status" ${statusClass}>${statusText}</div>
+            <div class="actions">
+              <button onclick="viewLogs('${p.pm2Name || p.id}')">Log</button>
+              <a class="btn" href="https://${p.id}.isnowfriend.com" target="_blank">開啟</a>
+              <button onclick="redeployProject('${p.id}')">重新部署</button>
+            </div></div>`;
+        });
+        // API 服務
         data.services.forEach(s => {
           html += `<div class="deployed-item">
             <div class="info"><span class="icon">📡</span><div>
@@ -311,6 +350,7 @@
               <button class="delete" onclick="deleteItem('service','${s.name}')">刪除</button>
             </div></div>`;
         });
+        // 上傳專案
         data.apps.forEach(a => {
           html += `<div class="deployed-item">
             <div class="info"><span class="icon">🌐</span><div>
@@ -336,52 +376,107 @@
       loadDeployed();
     }
 
-    // 載入 Git 部署專案
+    // 儲存專案資料
+    let projectsData = [];
+
+    // 載入 Git 部署專案（加到服務管理區塊）
     async function loadGitProjects() {
       try {
         const res = await fetch('/api/_admin/deploy/projects', {
           headers: { 'authorization': 'Bearer ' + authToken }
         });
         const data = await res.json();
+        projectsData = data.projects || [];
 
-        if (!data.projects || data.projects.length === 0) {
-          document.getElementById('gitProjectsList').innerHTML = '<div class="empty">尚無 Git 部署專案</div>';
-          return;
-        }
+        // 將 Git 專案卡片加到服務管理區塊
+        const grid = document.getElementById('servicesGrid');
+        projectsData.forEach(p => {
+          const isSuccess = p.lastDeployStatus === 'success';
+          const statusClass = isSuccess ? 'running' : 'failed';
+          const statusText = isSuccess ? '運行中' : '部署失敗';
+          const lastDeploy = p.lastDeployAt ? new Date(p.lastDeployAt).toLocaleString('zh-TW') : '-';
 
-        // 顯示 port 使用統計
-        const usedPorts = data.projects.filter(p => p.port).map(p => p.port).sort((a, b) => a - b);
-        const portSummary = usedPorts.length > 0
-          ? `已使用 Port: ${usedPorts.join(', ')}`
-          : '尚無 Port 分配';
-
-        let html = `<div style="margin-bottom:12px; padding:8px 12px; background:#1a2e1a; border:1px solid #2d4a2d; border-radius:6px; font-size:0.85em; color:#4ade80;">
-          📊 ${portSummary} · 下一個可用: ${usedPorts.length > 0 ? Math.max(...usedPorts) + 1 : 4001}
-        </div>`;
-
-        data.projects.forEach(p => {
-          const statusClass = p.lastDeployStatus === 'success' ? 'running' : 'failed';
-          const statusText = p.lastDeployStatus === 'success' ? '運行中' : '部署失敗';
-          const statusColor = p.lastDeployStatus === 'success' ? '#4ade80' : '#f87171';
-          const repoShort = p.repoUrl ? p.repoUrl.replace('https://github.com/', '').replace('.git', '') : '-';
-          const portDisplay = p.port ? `<span style="background:#1e3a5f; color:#8ab4f8; padding:2px 8px; border-radius:4px; font-size:0.8em; margin-left:8px;">:${p.port}</span>` : '';
-
-          html += `<div class="deployed-item">
-            <div class="info"><span class="icon">🚀</span><div>
-              <div class="name">${p.name || p.id}${portDisplay}</div>
-              <div class="url" style="color:#888;">${repoShort} · ${p.branch || 'main'}</div>
-            </div></div>
-            <div class="status" style="color:${statusColor};">${statusText}</div>
-            <div class="actions">
-              <a class="btn" href="https://${p.id}.isnowfriend.com" target="_blank">開啟</a>
-              <button onclick="redeployProject('${p.id}')">重新部署</button>
-              <button class="delete" onclick="deleteGitProject('${p.id}')">刪除</button>
-            </div></div>`;
+          const card = document.createElement('div');
+          card.className = 'service-card';
+          card.onclick = () => openProjectDetail(p.id);
+          card.innerHTML = `
+            <div class="service-icon">🚀</div>
+            <div class="service-info">
+              <div class="service-name">${p.name || p.id}${p.port ? ` <span style="color:#8ab4f8;font-size:0.8em;">:${p.port}</span>` : ''}</div>
+              <div class="service-desc">Git 自動部署專案</div>
+              <div class="service-stats" ${isSuccess ? '' : 'style="color:#f87171;"'}>最後部署: ${lastDeploy}</div>
+            </div>
+            <div class="service-status ${statusClass}">${statusText}</div>
+          `;
+          grid.appendChild(card);
         });
-        document.getElementById('gitProjectsList').innerHTML = html;
       } catch (e) {
-        document.getElementById('gitProjectsList').innerHTML = '<div class="empty">載入失敗</div>';
+        console.error('載入 Git 專案失敗', e);
       }
+    }
+
+    // 開啟專案詳情
+    async function openProjectDetail(projectId) {
+      const project = projectsData.find(p => p.id === projectId);
+      if (!project) return;
+
+      // 取得部署記錄
+      let deployments = [];
+      try {
+        const res = await fetch(`/api/_admin/deploy/projects/${projectId}`, {
+          headers: { 'authorization': 'Bearer ' + authToken }
+        });
+        const data = await res.json();
+        deployments = (data.deployments || []).sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt));
+      } catch (e) {}
+
+      const repoShort = project.repoUrl ? project.repoUrl.replace('https://github.com/', '').replace('.git', '') : '-';
+
+      let deploysHtml = deployments.length === 0 ? '<p style="color:#666;">無部署記錄</p>' : '';
+      deployments.slice(0, 8).forEach(d => {
+        const isSuccess = d.status === 'success';
+        const time = new Date(d.startedAt).toLocaleString('zh-TW');
+        const duration = d.duration ? `${(d.duration/1000).toFixed(1)}s` : '-';
+        deploysHtml += `
+          <div class="deploy-item">
+            <div class="row">
+              <span class="status ${d.status}">${isSuccess ? '✅' : '❌'} ${d.status}</span>
+              <span class="time">${time} · ${duration}</span>
+            </div>
+            <div class="commit">${d.commit || '-'} · ${d.triggeredBy || 'unknown'}</div>
+            ${d.commitMessage ? `<div class="commit" style="color:#aaa;">${d.commitMessage.substring(0, 60)}</div>` : ''}
+            ${d.error ? `<div class="error">${d.error.substring(0, 150)}</div>` : ''}
+          </div>
+        `;
+      });
+
+      const modal = document.createElement('div');
+      modal.className = 'project-modal';
+      modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+
+      modal.innerHTML = `
+        <div class="project-modal-content">
+          <div class="project-modal-header">
+            <h2>🚀 ${project.name || project.id} ${project.port ? `<span style="font-size:0.8em;color:#8ab4f8;">:${project.port}</span>` : ''}</h2>
+            <button onclick="this.closest('.project-modal').remove()" style="background:#333;border:none;color:#fff;padding:6px 12px;border-radius:6px;cursor:pointer;">✕</button>
+          </div>
+          <div class="project-modal-body">
+            <div style="color:#888;font-size:0.9rem;margin-bottom:15px;">${repoShort} · ${project.branch || 'main'}</div>
+            <div class="project-modal-actions">
+              <a href="https://${project.id}.isnowfriend.com" target="_blank" class="primary">🌐 開啟網站</a>
+              <button onclick="viewLogs('${project.pm2Name || project.id}')" class="secondary">📋 查看 Log</button>
+              <button onclick="this.closest('.project-modal').remove(); redeployProject('${project.id}')" class="secondary">🔄 重新部署</button>
+              <button onclick="this.closest('.project-modal').remove(); deleteGitProject('${project.id}')" class="danger">🗑️ 刪除專案</button>
+            </div>
+            <div class="deploy-history">
+              <h4>部署記錄（最近 8 筆）</h4>
+              ${deploysHtml}
+            </div>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
     }
 
     // 重新部署
@@ -412,6 +507,37 @@
         alert('刪除失敗');
       }
     }
+
+    // 查看 PM2 Log
+    async function viewLogs(pm2Name) {
+      try {
+        const res = await fetch(`/api/_admin/deploy/logs/${pm2Name}`, {
+          headers: { 'authorization': 'Bearer ' + authToken }
+        });
+        const data = await res.json();
+
+        const modal = document.createElement('div');
+        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px;';
+        modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+
+        const content = document.createElement('div');
+        content.style.cssText = 'background:#1a1a1a;border-radius:12px;width:100%;max-width:900px;max-height:80vh;display:flex;flex-direction:column;';
+
+        content.innerHTML = `
+          <div style="padding:16px 20px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;">
+            <h3 style="margin:0;color:#fff;">📋 ${pm2Name} Log</h3>
+            <button onclick="this.closest('div[style*=fixed]').remove()" style="background:#333;border:none;color:#fff;padding:6px 12px;border-radius:6px;cursor:pointer;">關閉</button>
+          </div>
+          <pre style="flex:1;overflow:auto;padding:16px;margin:0;font-size:12px;font-family:monospace;color:#ccc;background:#0d0d0d;white-space:pre-wrap;word-break:break-all;">${data.logs || '無 log'}</pre>
+        `;
+
+        modal.appendChild(content);
+        document.body.appendChild(modal);
+      } catch (e) {
+        alert('無法取得 log: ' + e.message);
+      }
+    }
+
   </script>
 </body>
 </html>
