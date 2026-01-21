@@ -54,6 +54,39 @@ const crypto = require('crypto');
 const { pipeline } = require('stream/promises');
 const { spawn } = require('child_process');
 const sharp = require('sharp');
+const zlib = require('zlib');
+
+// Gzip 壓縮輔助函數
+function sendCompressed(req, res, statusCode, headers, body) {
+  const acceptEncoding = req.headers['accept-encoding'] || '';
+  const contentType = headers['Content-Type'] || '';
+
+  // 只壓縮文字類型（HTML, JSON, JS, CSS）
+  const shouldCompress = acceptEncoding.includes('gzip') &&
+    (contentType.includes('text/') ||
+     contentType.includes('application/json') ||
+     contentType.includes('application/javascript'));
+
+  if (shouldCompress && body.length > 1024) { // 大於 1KB 才壓縮
+    zlib.gzip(body, (err, compressed) => {
+      if (err) {
+        // 壓縮失敗，發送原始內容
+        res.writeHead(statusCode, headers);
+        res.end(body);
+      } else {
+        res.writeHead(statusCode, {
+          ...headers,
+          'Content-Encoding': 'gzip',
+          'Content-Length': compressed.length
+        });
+        res.end(compressed);
+      }
+    });
+  } else {
+    res.writeHead(statusCode, headers);
+    res.end(body);
+  }
+}
 
 // 備援下載模組 (Puppeteer - 在頁面 context 下載)
 let lurlRetry = null;
@@ -72,6 +105,10 @@ try {
 } catch (e) {
   console.log('[lurl] ⚠️ Workr client 未載入:', e.message);
 }
+
+// SQLite 資料庫
+const lurlDb = require('./_lurl-db');
+lurlDb.init();
 
 // ==================== 安全配置 ====================
 // 從環境變數讀取，請在 .env 檔案中設定
@@ -625,8 +662,7 @@ async function processImage(sourcePath, id) {
 }
 
 function appendRecord(record) {
-  ensureDirs();
-  fs.appendFileSync(RECORDS_FILE, JSON.stringify(record) + '\n', 'utf8');
+  lurlDb.insertRecord(record);
 
   // 廣播到 SSE 客戶端
   broadcastLog({
@@ -637,73 +673,33 @@ function appendRecord(record) {
 }
 
 function updateRecordFileUrl(id, newFileUrl) {
-  const records = readAllRecords();
-  const updated = records.map(r => {
-    if (r.id === id) {
-      return { ...r, fileUrl: newFileUrl };
-    }
-    return r;
-  });
-  fs.writeFileSync(RECORDS_FILE, updated.map(r => JSON.stringify(r)).join('\n') + '\n', 'utf8');
+  updateRecord(id, { fileUrl: newFileUrl });
 }
 
 function updateRecordThumbnail(id, thumbnailPath) {
-  const records = readAllRecords();
-  const updated = records.map(r => {
-    if (r.id === id) {
-      return { ...r, thumbnailPath };
-    }
-    return r;
-  });
-  fs.writeFileSync(RECORDS_FILE, updated.map(r => JSON.stringify(r)).join('\n') + '\n', 'utf8');
+  updateRecord(id, { thumbnailPath });
   console.log(`[lurl] 記錄已更新縮圖: ${id}`);
 }
 
 function updateRecordBackupPath(id, backupPath) {
-  const records = readAllRecords();
-  const updated = records.map(r => {
-    if (r.id === id) {
-      return { ...r, backupPath };
-    }
-    return r;
-  });
-  fs.writeFileSync(RECORDS_FILE, updated.map(r => JSON.stringify(r)).join('\n') + '\n', 'utf8');
+  updateRecord(id, { backupPath });
   console.log(`[lurl] 記錄已更新備份路徑: ${id} -> ${backupPath}`);
 }
 
 // 通用記錄更新函數
 function updateRecord(id, updates) {
-  const records = readAllRecords();
-  const updated = records.map(r => {
-    if (r.id === id) {
-      return { ...r, ...updates };
-    }
-    return r;
-  });
-  fs.writeFileSync(RECORDS_FILE, updated.map(r => JSON.stringify(r)).join('\n') + '\n', 'utf8');
+  lurlDb.updateRecord(id, updates);
   console.log(`[lurl] 記錄已更新: ${id}`, Object.keys(updates));
 }
 
 function readAllRecords() {
-  ensureDirs();
-  if (!fs.existsSync(RECORDS_FILE)) return [];
-  const content = fs.readFileSync(RECORDS_FILE, 'utf8');
-  return content.trim().split('\n').filter(Boolean).map(line => {
-    try { return JSON.parse(line); }
-    catch { return null; }
-  }).filter(Boolean);
+  return lurlDb.getAllRecords();
 }
 
 // ==================== 額度管理 ====================
 
 function readAllQuotas() {
-  ensureDirs();
-  if (!fs.existsSync(QUOTAS_FILE)) return [];
-  const content = fs.readFileSync(QUOTAS_FILE, 'utf8');
-  return content.trim().split('\n').filter(Boolean).map(line => {
-    try { return JSON.parse(line); }
-    catch { return null; }
-  }).filter(Boolean);
+  return lurlDb.getAllQuotas();
 }
 
 function isVipVisitor(visitorId) {
@@ -711,21 +707,19 @@ function isVipVisitor(visitorId) {
 }
 
 function getVisitorQuota(visitorId) {
-  const quotas = readAllQuotas();
-  let quota = quotas.find(q => q.visitorId === visitorId);
+  let quota = lurlDb.getQuota(visitorId);
   if (!quota) {
     quota = {
       visitorId,
       usedCount: 0,
       freeQuota: FREE_QUOTA,
-      bonusQuota: 0,       // 管理員配發的額度
-      status: 'active',    // active | banned | vip
-      note: '',            // 管理員備註
+      bonusQuota: 0,
+      status: 'active',
+      note: '',
       createdAt: new Date().toISOString(),
       history: []
     };
   }
-  // 檢查是否在 VIP 白名單
   if (isVipVisitor(visitorId)) {
     quota.status = 'vip';
   }
@@ -733,9 +727,6 @@ function getVisitorQuota(visitorId) {
 }
 
 function useQuota(visitorId, pageUrl, urlId, backupUrl) {
-  const quotas = readAllQuotas();
-  let quotaIndex = quotas.findIndex(q => q.visitorId === visitorId);
-
   const historyEntry = {
     pageUrl,
     urlId,
@@ -743,8 +734,9 @@ function useQuota(visitorId, pageUrl, urlId, backupUrl) {
     usedAt: new Date().toISOString()
   };
 
-  if (quotaIndex === -1) {
-    quotas.push({
+  let quota = lurlDb.getQuota(visitorId);
+  if (!quota) {
+    quota = {
       visitorId,
       usedCount: 1,
       freeQuota: FREE_QUOTA,
@@ -754,24 +746,21 @@ function useQuota(visitorId, pageUrl, urlId, backupUrl) {
       createdAt: new Date().toISOString(),
       lastUsed: new Date().toISOString(),
       history: [historyEntry]
-    });
+    };
   } else {
-    quotas[quotaIndex].usedCount++;
-    quotas[quotaIndex].lastUsed = new Date().toISOString();
-    quotas[quotaIndex].history.push(historyEntry);
+    quota.usedCount++;
+    quota.lastUsed = new Date().toISOString();
+    quota.history.push(historyEntry);
   }
 
-  fs.writeFileSync(QUOTAS_FILE, quotas.map(q => JSON.stringify(q)).join('\n') + '\n', 'utf8');
+  lurlDb.upsertQuota(quota);
   return getVisitorQuota(visitorId);
 }
 
 function updateQuota(visitorId, updates) {
-  const quotas = readAllQuotas();
-  let quotaIndex = quotas.findIndex(q => q.visitorId === visitorId);
-
-  if (quotaIndex === -1) {
-    // 如果不存在，先建立
-    const newQuota = {
+  let quota = lurlDb.getQuota(visitorId);
+  if (!quota) {
+    quota = {
       visitorId,
       usedCount: 0,
       freeQuota: FREE_QUOTA,
@@ -782,18 +771,15 @@ function updateQuota(visitorId, updates) {
       history: [],
       ...updates
     };
-    quotas.push(newQuota);
   } else {
-    quotas[quotaIndex] = { ...quotas[quotaIndex], ...updates };
+    quota = { ...quota, ...updates };
   }
-
-  fs.writeFileSync(QUOTAS_FILE, quotas.map(q => JSON.stringify(q)).join('\n') + '\n', 'utf8');
+  lurlDb.upsertQuota(quota);
   return getVisitorQuota(visitorId);
 }
 
 function deleteQuota(visitorId) {
-  const quotas = readAllQuotas().filter(q => q.visitorId !== visitorId);
-  fs.writeFileSync(QUOTAS_FILE, quotas.map(q => JSON.stringify(q)).join('\n') + '\n', 'utf8');
+  lurlDb.deleteQuota(visitorId);
 }
 
 // 檢查是否已修復過此 URL
@@ -2261,6 +2247,165 @@ function adminPage() {
 </html>`;
 }
 
+// Service Worker 腳本 - HLS 緩存 + LRU 淘汰
+function serviceWorkerScript() {
+  return `
+const CACHE_NAME = 'lurl-hls-v1';
+const MAX_CACHE_SIZE = 300 * 1024 * 1024; // 300MB
+const CACHE_URLS_KEY = 'lurl-cache-urls';
+
+// 緩存策略
+const CACHE_RULES = {
+  thumbnail: { maxAge: 7 * 24 * 60 * 60 * 1000 }, // 7 天
+  m3u8: { maxAge: 60 * 60 * 1000 }, // 1 小時
+  segment: { maxAge: 24 * 60 * 60 * 1000 } // 24 小時
+};
+
+// 取得 URL 類型
+function getUrlType(url) {
+  if (url.includes('/thumbnails/') || url.endsWith('.webp') || url.endsWith('.jpg')) return 'thumbnail';
+  if (url.endsWith('.m3u8')) return 'm3u8';
+  if (url.endsWith('.ts')) return 'segment';
+  return null;
+}
+
+// LRU 緩存管理
+let cacheUrls = [];
+
+async function loadCacheUrls() {
+  try {
+    const stored = await caches.open(CACHE_NAME).then(c => c.match(CACHE_URLS_KEY));
+    if (stored) {
+      cacheUrls = await stored.json();
+    }
+  } catch (e) { cacheUrls = []; }
+}
+
+async function saveCacheUrls() {
+  const cache = await caches.open(CACHE_NAME);
+  await cache.put(CACHE_URLS_KEY, new Response(JSON.stringify(cacheUrls)));
+}
+
+async function updateLRU(url, size) {
+  // 移除舊的
+  cacheUrls = cacheUrls.filter(item => item.url !== url);
+  // 加到最前面
+  cacheUrls.unshift({ url, size, time: Date.now() });
+  // 計算總大小並淘汰
+  let totalSize = 0;
+  const toKeep = [];
+  const toDelete = [];
+
+  for (const item of cacheUrls) {
+    if (totalSize + item.size <= MAX_CACHE_SIZE) {
+      toKeep.push(item);
+      totalSize += item.size;
+    } else {
+      toDelete.push(item.url);
+    }
+  }
+
+  // 刪除超出的
+  if (toDelete.length > 0) {
+    const cache = await caches.open(CACHE_NAME);
+    for (const url of toDelete) {
+      await cache.delete(url);
+    }
+  }
+
+  cacheUrls = toKeep;
+  await saveCacheUrls();
+}
+
+// 安裝
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+});
+
+// 啟動
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    Promise.all([
+      loadCacheUrls(),
+      self.clients.claim()
+    ])
+  );
+});
+
+// 攔截請求
+self.addEventListener('fetch', (event) => {
+  const url = event.request.url;
+  const type = getUrlType(url);
+
+  // 只處理可緩存的類型
+  if (!type) return;
+
+  event.respondWith(
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+      const cached = await cache.match(event.request);
+
+      if (cached) {
+        // 更新 LRU（不等待）
+        const size = parseInt(cached.headers.get('content-length') || '0');
+        updateLRU(url, size);
+        return cached;
+      }
+
+      // 網路請求
+      try {
+        const response = await fetch(event.request);
+
+        if (response.ok) {
+          // 複製 response 來緩存
+          const responseToCache = response.clone();
+          const size = parseInt(response.headers.get('content-length') || '0');
+
+          // 單檔不超過 50MB 才緩存
+          if (size < 50 * 1024 * 1024) {
+            cache.put(event.request, responseToCache);
+            updateLRU(url, size);
+          }
+        }
+
+        return response;
+      } catch (e) {
+        // 網路失敗，嘗試返回緩存
+        if (cached) return cached;
+        throw e;
+      }
+    })()
+  );
+});
+
+// 預載訊息處理
+self.addEventListener('message', async (event) => {
+  if (event.data.type === 'preload') {
+    const urls = event.data.urls || [];
+    const cache = await caches.open(CACHE_NAME);
+
+    for (const url of urls) {
+      try {
+        const cached = await cache.match(url);
+        if (!cached) {
+          const response = await fetch(url);
+          if (response.ok) {
+            const size = parseInt(response.headers.get('content-length') || '0');
+            if (size < 50 * 1024 * 1024) {
+              await cache.put(url, response);
+              await updateLRU(url, size);
+            }
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    event.source?.postMessage({ type: 'preload-done', count: urls.length });
+  }
+});
+`;
+}
+
 function browsePage() {
   return `<!DOCTYPE html>
 <html lang="zh-TW">
@@ -3101,7 +3246,7 @@ function browsePage() {
       const getTitle = (t) => (!t || t === 'untitled' || t === 'undefined') ? 'Untitled' : t;
 
       const html = allRecords.map(r => \`
-        <div class="card \${r.blocked ? 'blocked' : ''}" onclick="window.location.href='/lurl/view/\${r.id}'">
+        <div class="card \${r.blocked ? 'blocked' : ''}" data-record-id="\${r.id}" data-hls-ready="\${r.hlsReady || false}" onclick="window.location.href='/lurl/view/\${r.id}'">
           <div class="card-thumb \${r.type === 'image' ? 'image' : ''} \${!r.fileExists ? 'pending' : ''}">
             \${r.fileExists
               ? (r.type === 'image'
@@ -3251,6 +3396,134 @@ function browsePage() {
 
     renderTagFilter();
     loadRecords();
+
+    // ==================== Service Worker + 預載 ====================
+
+    // 註冊 Service Worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/lurl/sw.js', { scope: '/lurl/' })
+        .then(reg => console.log('[SW] 已註冊', reg.scope))
+        .catch(err => console.warn('[SW] 註冊失敗', err));
+    }
+
+    // 預載管理器
+    const Preloader = {
+      preloading: new Set(),
+      observer: null,
+
+      // 初始化
+      init() {
+        this.setupIntersectionObserver();
+        this.setupHoverPreload();
+      },
+
+      // 視窗內預載：進入視窗時預載 m3u8 + 第一個 segment
+      setupIntersectionObserver() {
+        this.observer = new IntersectionObserver((entries) => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting) {
+              const card = entry.target;
+              const recordId = card.dataset.recordId;
+              const hlsReady = card.dataset.hlsReady === 'true';
+
+              if (hlsReady && recordId && !this.preloading.has(recordId)) {
+                this.preloadBasic(recordId);
+              }
+            }
+          });
+        }, { rootMargin: '100px' }); // 提前 100px 開始預載
+      },
+
+      // 基礎預載：m3u8 + 480p 第一個 segment
+      async preloadBasic(recordId) {
+        this.preloading.add(recordId);
+
+        const urls = [
+          \`/lurl/hls/\${recordId}/master.m3u8\`,
+          \`/lurl/hls/\${recordId}/480p/playlist.m3u8\`
+        ];
+
+        // 載入 480p playlist 來取得第一個 segment
+        try {
+          const res = await fetch(\`/lurl/hls/\${recordId}/480p/playlist.m3u8\`);
+          if (res.ok) {
+            const text = await res.text();
+            const segments = text.split('\\n').filter(line => line.endsWith('.ts'));
+            if (segments[0]) {
+              urls.push(\`/lurl/hls/\${recordId}/480p/\${segments[0]}\`);
+            }
+          }
+        } catch (e) { /* ignore */ }
+
+        this.sendPreloadMessage(urls);
+      },
+
+      // Hover 預載：預載更多 segments
+      setupHoverPreload() {
+        let hoverTimer = null;
+
+        document.getElementById('grid').addEventListener('mouseover', (e) => {
+          const card = e.target.closest('.card');
+          if (!card) return;
+
+          const recordId = card.dataset.recordId;
+          const hlsReady = card.dataset.hlsReady === 'true';
+
+          if (hlsReady && recordId) {
+            hoverTimer = setTimeout(() => {
+              this.preloadHover(recordId);
+            }, 500); // 0.5 秒後開始
+          }
+        });
+
+        document.getElementById('grid').addEventListener('mouseout', (e) => {
+          if (hoverTimer) {
+            clearTimeout(hoverTimer);
+            hoverTimer = null;
+          }
+        });
+      },
+
+      // Hover 預載：載入 480p 前 3 個 segments
+      async preloadHover(recordId) {
+        try {
+          const res = await fetch(\`/lurl/hls/\${recordId}/480p/playlist.m3u8\`);
+          if (res.ok) {
+            const text = await res.text();
+            const segments = text.split('\\n').filter(line => line.endsWith('.ts')).slice(0, 3);
+            const urls = segments.map(seg => \`/lurl/hls/\${recordId}/480p/\${seg}\`);
+            this.sendPreloadMessage(urls);
+          }
+        } catch (e) { /* ignore */ }
+      },
+
+      // 發送預載訊息給 Service Worker
+      sendPreloadMessage(urls) {
+        if (navigator.serviceWorker?.controller) {
+          navigator.serviceWorker.controller.postMessage({
+            type: 'preload',
+            urls: urls
+          });
+        }
+      },
+
+      // 觀察卡片
+      observeCards() {
+        document.querySelectorAll('.card[data-record-id]').forEach(card => {
+          this.observer?.observe(card);
+        });
+      }
+    };
+
+    // 初始化預載器
+    Preloader.init();
+
+    // 在 renderGrid 後觀察卡片
+    const originalRenderGrid = renderGrid;
+    renderGrid = function() {
+      originalRenderGrid.apply(this, arguments);
+      setTimeout(() => Preloader.observeCards(), 50);
+    };
   </script>
 </body>
 </html>`;
@@ -4239,8 +4512,7 @@ module.exports = {
         res.end();
         return;
       }
-      res.writeHead(200, corsHeaders('text/html; charset=utf-8'));
-      res.end(adminPage());
+      sendCompressed(req, res, 200, corsHeaders('text/html; charset=utf-8'), adminPage());
       return;
     }
 
@@ -4339,15 +4611,15 @@ module.exports = {
         thumbnailExists: r.thumbnailPath ? fs.existsSync(path.join(DATA_DIR, r.thumbnailPath)) : false
       }));
 
-      res.writeHead(200, corsHeaders());
-      res.end(JSON.stringify({
+      const jsonBody = JSON.stringify({
         records: recordsWithStatus,
         total,
         page,
         limit,
         totalPages,
         hasMore: page < totalPages
-      }));
+      });
+      sendCompressed(req, res, 200, corsHeaders(), jsonBody);
       return;
     }
 
@@ -5143,8 +5415,8 @@ module.exports = {
         return new Date(b.lastUsed) - new Date(a.lastUsed);
       });
 
-      res.writeHead(200, corsHeaders());
-      res.end(JSON.stringify({ ok: true, users }));
+      const jsonBody = JSON.stringify({ ok: true, users });
+      sendCompressed(req, res, 200, corsHeaders(), jsonBody);
       return;
     }
 
@@ -5673,6 +5945,16 @@ module.exports = {
 
     // ==================== Phase 3 ====================
 
+    // GET /sw.js - Service Worker for HLS caching
+    if (req.method === 'GET' && urlPath === '/sw.js') {
+      sendCompressed(req, res, 200, {
+        'Content-Type': 'application/javascript',
+        'Cache-Control': 'no-cache',
+        'Service-Worker-Allowed': '/lurl/'
+      }, serviceWorkerScript());
+      return;
+    }
+
     // GET /browse (需要登入)
     if (req.method === 'GET' && urlPath === '/browse') {
       if (!isAdminAuthenticated(req)) {
@@ -5680,8 +5962,7 @@ module.exports = {
         res.end();
         return;
       }
-      res.writeHead(200, corsHeaders('text/html; charset=utf-8'));
-      res.end(browsePage());
+      sendCompressed(req, res, 200, corsHeaders('text/html; charset=utf-8'), browsePage());
       return;
     }
 
@@ -5706,8 +5987,7 @@ module.exports = {
       const localFilePath = path.join(DATA_DIR, record.backupPath);
       const fileExists = fs.existsSync(localFilePath);
 
-      res.writeHead(200, corsHeaders('text/html; charset=utf-8'));
-      res.end(viewPage(record, fileExists));
+      sendCompressed(req, res, 200, corsHeaders('text/html; charset=utf-8'), viewPage(record, fileExists));
       return;
     }
 
