@@ -5227,7 +5227,8 @@ module.exports = {
           'Accept-Ranges': 'bytes',
           'Content-Length': chunkSize,
           'Content-Type': contentType,
-          'Access-Control-Allow-Origin': '*'
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'public, max-age=31536000, immutable'
         });
         if (req.method === 'HEAD') {
           res.end();
@@ -5239,7 +5240,8 @@ module.exports = {
           'Content-Type': contentType,
           'Content-Length': fileSize,
           'Accept-Ranges': 'bytes',
-          'Access-Control-Allow-Origin': '*'
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'public, max-age=31536000, immutable'
         });
         if (req.method === 'HEAD') {
           res.end();
