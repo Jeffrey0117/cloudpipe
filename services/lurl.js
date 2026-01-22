@@ -135,6 +135,86 @@ const FREE_QUOTA = 3;
 // VIP 白名單（無限額度），用逗號分隔多個 visitorId
 const VIP_WHITELIST = (process.env.LURL_VIP_WHITELIST || '').split(',').filter(Boolean);
 
+// JWT 設定
+const JWT_SECRET = process.env.LURL_JWT_SECRET || SESSION_SECRET;
+const JWT_EXPIRES = 7 * 24 * 60 * 60 * 1000; // 7 天
+const REFRESH_EXPIRES = 30 * 24 * 60 * 60 * 1000; // 30 天
+
+// ==================== 會員認證工具 ====================
+
+// 密碼雜湊（使用 PBKDF2）
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex');
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password, storedHash) {
+  const [salt, hash] = storedHash.split(':');
+  const verify = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex');
+  return hash === verify;
+}
+
+// JWT Token
+function generateJWT(payload, expiresIn = JWT_EXPIRES) {
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const now = Date.now();
+  const exp = now + expiresIn;
+
+  const headerB64 = Buffer.from(JSON.stringify(header)).toString('base64url');
+  const payloadB64 = Buffer.from(JSON.stringify({ ...payload, iat: now, exp })).toString('base64url');
+  const signature = crypto.createHmac('sha256', JWT_SECRET)
+    .update(`${headerB64}.${payloadB64}`)
+    .digest('base64url');
+
+  return `${headerB64}.${payloadB64}.${signature}`;
+}
+
+function verifyJWT(token) {
+  try {
+    const [headerB64, payloadB64, signature] = token.split('.');
+    const expectedSig = crypto.createHmac('sha256', JWT_SECRET)
+      .update(`${headerB64}.${payloadB64}`)
+      .digest('base64url');
+
+    if (signature !== expectedSig) return null;
+
+    const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());
+    if (payload.exp < Date.now()) return null;
+
+    return payload;
+  } catch (e) {
+    return null;
+  }
+}
+
+// 從 Cookie 或 Header 取得 JWT
+function getMemberToken(req) {
+  // 先從 Authorization header
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.slice(7);
+  }
+
+  // 再從 Cookie
+  const cookies = parseCookies(req.headers.cookie || '');
+  return cookies.lurl_member_token;
+}
+
+// 驗證會員身份
+function getMemberFromRequest(req) {
+  const token = getMemberToken(req);
+  if (!token) return null;
+
+  const payload = verifyJWT(token);
+  if (!payload || !payload.userId) return null;
+
+  const user = lurlDb.getUser(payload.userId);
+  if (!user) return null;
+
+  return user;
+}
+
 // SSE 即時日誌客戶端
 const sseClients = new Set();
 
@@ -3323,6 +3403,292 @@ function feedbackPage() {
 </html>`;
 }
 
+// ==================== Member Login Page ====================
+
+function memberLoginPage(error = '') {
+  return `<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <link rel="icon" type="image/png" href="/lurl/files/LOGO.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>會員登入 - Lurl</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: white; min-height: 100vh; display: flex; flex-direction: column; }
+    .header { background: #1a1a2e; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+    .header .logo { height: 36px; width: auto; }
+    .header nav { display: flex; gap: 20px; }
+    .header nav a { color: #aaa; text-decoration: none; font-size: 0.95em; }
+    .header nav a:hover { color: white; }
+    .main { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px 20px; }
+    .auth-card { background: #1a1a1a; border-radius: 16px; padding: 40px; max-width: 400px; width: 100%; }
+    .auth-card h2 { text-align: center; margin-bottom: 30px; font-size: 1.8em; }
+    .form-group { margin-bottom: 20px; }
+    .form-group label { display: block; margin-bottom: 8px; color: #aaa; font-size: 0.9em; }
+    .form-group input {
+      width: 100%;
+      padding: 14px 16px;
+      border: 2px solid #333;
+      border-radius: 8px;
+      background: #0f0f0f;
+      color: white;
+      font-size: 1em;
+    }
+    .form-group input:focus { border-color: #3b82f6; outline: none; }
+    .submit-btn {
+      width: 100%;
+      padding: 14px;
+      background: #4ade80;
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      font-size: 1.1em;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    .submit-btn:hover { background: #22c55e; }
+    .submit-btn:disabled { background: #333; color: #888; cursor: not-allowed; }
+    .auth-links { text-align: center; margin-top: 24px; color: #888; font-size: 0.9em; }
+    .auth-links a { color: #3b82f6; text-decoration: none; }
+    .auth-links a:hover { text-decoration: underline; }
+    .error-msg { background: rgba(239,68,68,0.1); border: 1px solid #ef4444; color: #ef4444; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 0.9em; }
+    .toast { position: fixed; bottom: 20px; right: 20px; background: #4ade80; color: #000; padding: 16px 24px; border-radius: 8px; font-weight: 500; opacity: 0; transform: translateY(20px); transition: all 0.3s; z-index: 1000; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.error { background: #ef4444; color: white; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <a href="/lurl/"><img src="/lurl/files/LOGO.png" alt="Lurl" class="logo"></a>
+    <nav>
+      <a href="/lurl/browse">瀏覽</a>
+      <a href="/lurl/pricing">方案</a>
+    </nav>
+  </header>
+
+  <main class="main">
+    <div class="auth-card">
+      <h2>🔐 會員登入</h2>
+      ${error ? `<div class="error-msg">${error}</div>` : ''}
+      <form id="loginForm">
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" required placeholder="your@email.com">
+        </div>
+        <div class="form-group">
+          <label for="password">密碼</label>
+          <input type="password" id="password" name="password" required placeholder="••••••••">
+        </div>
+        <button type="submit" class="submit-btn">登入</button>
+      </form>
+      <div class="auth-links">
+        還沒有帳號？<a href="/lurl/member/register">立即註冊</a>
+      </div>
+    </div>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const form = document.getElementById('loginForm');
+    const toast = document.getElementById('toast');
+
+    function showToast(message, isError = false) {
+      toast.textContent = message;
+      toast.className = 'toast show' + (isError ? ' error' : '');
+      setTimeout(() => toast.className = 'toast', 3000);
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = form.querySelector('.submit-btn');
+      btn.disabled = true;
+      btn.textContent = '登入中...';
+
+      try {
+        const res = await fetch('/lurl/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: form.email.value,
+            password: form.password.value
+          })
+        });
+
+        const data = await res.json();
+        if (data.ok) {
+          showToast('登入成功！');
+          setTimeout(() => window.location.href = '/lurl/browse', 1000);
+        } else {
+          showToast(data.error || '登入失敗', true);
+        }
+      } catch (err) {
+        showToast('網路錯誤，請稍後再試', true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '登入';
+      }
+    });
+  </script>
+</body>
+</html>`;
+}
+
+// ==================== Member Register Page ====================
+
+function memberRegisterPage(error = '') {
+  return `<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <link rel="icon" type="image/png" href="/lurl/files/LOGO.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>會員註冊 - Lurl</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: white; min-height: 100vh; display: flex; flex-direction: column; }
+    .header { background: #1a1a2e; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+    .header .logo { height: 36px; width: auto; }
+    .header nav { display: flex; gap: 20px; }
+    .header nav a { color: #aaa; text-decoration: none; font-size: 0.95em; }
+    .header nav a:hover { color: white; }
+    .main { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px 20px; }
+    .auth-card { background: #1a1a1a; border-radius: 16px; padding: 40px; max-width: 400px; width: 100%; }
+    .auth-card h2 { text-align: center; margin-bottom: 30px; font-size: 1.8em; }
+    .form-group { margin-bottom: 20px; }
+    .form-group label { display: block; margin-bottom: 8px; color: #aaa; font-size: 0.9em; }
+    .form-group input {
+      width: 100%;
+      padding: 14px 16px;
+      border: 2px solid #333;
+      border-radius: 8px;
+      background: #0f0f0f;
+      color: white;
+      font-size: 1em;
+    }
+    .form-group input:focus { border-color: #3b82f6; outline: none; }
+    .form-group .hint { color: #666; font-size: 0.8em; margin-top: 4px; }
+    .submit-btn {
+      width: 100%;
+      padding: 14px;
+      background: #4ade80;
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      font-size: 1.1em;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    .submit-btn:hover { background: #22c55e; }
+    .submit-btn:disabled { background: #333; color: #888; cursor: not-allowed; }
+    .auth-links { text-align: center; margin-top: 24px; color: #888; font-size: 0.9em; }
+    .auth-links a { color: #3b82f6; text-decoration: none; }
+    .auth-links a:hover { text-decoration: underline; }
+    .error-msg { background: rgba(239,68,68,0.1); border: 1px solid #ef4444; color: #ef4444; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 0.9em; }
+    .toast { position: fixed; bottom: 20px; right: 20px; background: #4ade80; color: #000; padding: 16px 24px; border-radius: 8px; font-weight: 500; opacity: 0; transform: translateY(20px); transition: all 0.3s; z-index: 1000; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.error { background: #ef4444; color: white; }
+    .benefits { background: #252525; border-radius: 8px; padding: 16px; margin-bottom: 24px; font-size: 0.9em; }
+    .benefits h4 { color: #4ade80; margin-bottom: 8px; }
+    .benefits ul { list-style: none; color: #aaa; }
+    .benefits li { padding: 4px 0; }
+    .benefits li::before { content: '✓'; color: #4ade80; margin-right: 8px; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <a href="/lurl/"><img src="/lurl/files/LOGO.png" alt="Lurl" class="logo"></a>
+    <nav>
+      <a href="/lurl/browse">瀏覽</a>
+      <a href="/lurl/pricing">方案</a>
+    </nav>
+  </header>
+
+  <main class="main">
+    <div class="auth-card">
+      <h2>✨ 加入會員</h2>
+      <div class="benefits">
+        <h4>免費會員福利</h4>
+        <ul>
+          <li>每月 3 點額度</li>
+          <li>使用腳本備份內容</li>
+          <li>瀏覽所有預覽</li>
+        </ul>
+      </div>
+      ${error ? `<div class="error-msg">${error}</div>` : ''}
+      <form id="registerForm">
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" required placeholder="your@email.com">
+        </div>
+        <div class="form-group">
+          <label for="nickname">暱稱（選填）</label>
+          <input type="text" id="nickname" name="nickname" placeholder="你想怎麼被稱呼">
+        </div>
+        <div class="form-group">
+          <label for="password">密碼</label>
+          <input type="password" id="password" name="password" required placeholder="至少 6 個字元" minlength="6">
+          <p class="hint">密碼至少需要 6 個字元</p>
+        </div>
+        <button type="submit" class="submit-btn">註冊</button>
+      </form>
+      <div class="auth-links">
+        已有帳號？<a href="/lurl/member/login">登入</a>
+      </div>
+    </div>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const form = document.getElementById('registerForm');
+    const toast = document.getElementById('toast');
+
+    function showToast(message, isError = false) {
+      toast.textContent = message;
+      toast.className = 'toast show' + (isError ? ' error' : '');
+      setTimeout(() => toast.className = 'toast', 3000);
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = form.querySelector('.submit-btn');
+      btn.disabled = true;
+      btn.textContent = '註冊中...';
+
+      try {
+        const res = await fetch('/lurl/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: form.email.value,
+            password: form.password.value,
+            nickname: form.nickname.value
+          })
+        });
+
+        const data = await res.json();
+        if (data.ok) {
+          showToast('註冊成功！');
+          setTimeout(() => window.location.href = '/lurl/browse', 1000);
+        } else {
+          showToast(data.error || '註冊失敗', true);
+        }
+      } catch (err) {
+        showToast('網路錯誤，請稍後再試', true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '註冊';
+      }
+    });
+  </script>
+</body>
+</html>`;
+}
+
 function browsePage() {
   return `<!DOCTYPE html>
 <html lang="zh-TW">
@@ -4966,6 +5332,172 @@ module.exports = {
     // GET /feedback - 意見回饋
     if (req.method === 'GET' && urlPath === '/feedback') {
       sendCompressed(req, res, 200, corsHeaders('text/html; charset=utf-8'), feedbackPage());
+      return;
+    }
+
+    // ==================== 會員認證 API ====================
+
+    // GET /member/login - 會員登入頁
+    if (req.method === 'GET' && urlPath === '/member/login') {
+      sendCompressed(req, res, 200, corsHeaders('text/html; charset=utf-8'), memberLoginPage());
+      return;
+    }
+
+    // GET /member/register - 會員註冊頁
+    if (req.method === 'GET' && urlPath === '/member/register') {
+      sendCompressed(req, res, 200, corsHeaders('text/html; charset=utf-8'), memberRegisterPage());
+      return;
+    }
+
+    // POST /api/auth/register - 會員註冊
+    if (req.method === 'POST' && urlPath === '/api/auth/register') {
+      try {
+        const body = await parseBody(req);
+        const { email, password, nickname } = body;
+
+        if (!email || !password) {
+          res.writeHead(400, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: '請填寫 Email 和密碼' }));
+          return;
+        }
+
+        // 驗證 email 格式
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          res.writeHead(400, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: 'Email 格式不正確' }));
+          return;
+        }
+
+        // 密碼長度檢查
+        if (password.length < 6) {
+          res.writeHead(400, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: '密碼至少需要 6 個字元' }));
+          return;
+        }
+
+        // 檢查 email 是否已註冊
+        const existing = lurlDb.getUserByEmail(email);
+        if (existing) {
+          res.writeHead(409, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: '此 Email 已被註冊' }));
+          return;
+        }
+
+        // 建立帳號
+        const userId = crypto.randomUUID();
+        const passwordHash = hashPassword(password);
+        const now = new Date().toISOString();
+
+        const user = lurlDb.createUser({
+          id: userId,
+          email,
+          passwordHash,
+          nickname: nickname || email.split('@')[0],
+          tier: 'free',
+          quotaBalance: FREE_QUOTA,
+          createdAt: now,
+          lastLoginAt: now
+        });
+
+        // 產生 JWT
+        const token = generateJWT({ userId: user.id, email: user.email });
+
+        res.writeHead(200, {
+          ...corsHeaders(),
+          'Set-Cookie': `lurl_member_token=${token}; Path=/lurl; HttpOnly; SameSite=Strict; Max-Age=${JWT_EXPIRES / 1000}`
+        });
+        res.end(JSON.stringify({
+          ok: true,
+          user: { id: user.id, email: user.email, nickname: user.nickname, tier: user.tier },
+          token
+        }));
+      } catch (err) {
+        console.error('[auth] 註冊失敗:', err);
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '註冊失敗' }));
+      }
+      return;
+    }
+
+    // POST /api/auth/login - 會員登入
+    if (req.method === 'POST' && urlPath === '/api/auth/login') {
+      try {
+        const body = await parseBody(req);
+        const { email, password } = body;
+
+        if (!email || !password) {
+          res.writeHead(400, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: '請填寫 Email 和密碼' }));
+          return;
+        }
+
+        const user = lurlDb.getUserByEmail(email);
+        if (!user) {
+          res.writeHead(401, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: 'Email 或密碼錯誤' }));
+          return;
+        }
+
+        if (!verifyPassword(password, user.passwordHash)) {
+          res.writeHead(401, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: 'Email 或密碼錯誤' }));
+          return;
+        }
+
+        // 更新最後登入時間
+        lurlDb.updateUser(user.id, { lastLoginAt: new Date().toISOString() });
+
+        // 產生 JWT
+        const token = generateJWT({ userId: user.id, email: user.email });
+
+        res.writeHead(200, {
+          ...corsHeaders(),
+          'Set-Cookie': `lurl_member_token=${token}; Path=/lurl; HttpOnly; SameSite=Strict; Max-Age=${JWT_EXPIRES / 1000}`
+        });
+        res.end(JSON.stringify({
+          ok: true,
+          user: { id: user.id, email: user.email, nickname: user.nickname, tier: user.tier },
+          token
+        }));
+      } catch (err) {
+        console.error('[auth] 登入失敗:', err);
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '登入失敗' }));
+      }
+      return;
+    }
+
+    // POST /api/auth/logout - 會員登出
+    if (req.method === 'POST' && urlPath === '/api/auth/logout') {
+      res.writeHead(200, {
+        ...corsHeaders(),
+        'Set-Cookie': 'lurl_member_token=; Path=/lurl; HttpOnly; Max-Age=0'
+      });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    // GET /api/auth/me - 取得當前會員資訊
+    if (req.method === 'GET' && urlPath === '/api/auth/me') {
+      const user = getMemberFromRequest(req);
+      if (!user) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '未登入' }));
+        return;
+      }
+
+      res.writeHead(200, corsHeaders());
+      res.end(JSON.stringify({
+        ok: true,
+        user: {
+          id: user.id,
+          email: user.email,
+          nickname: user.nickname,
+          tier: user.tier,
+          tierExpiry: user.tierExpiry,
+          quotaBalance: user.quotaBalance
+        }
+      }));
       return;
     }
 

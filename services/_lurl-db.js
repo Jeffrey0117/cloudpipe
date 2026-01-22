@@ -83,6 +83,22 @@ function createTables() {
     )
   `);
 
+  // Users 表（會員系統）
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      passwordHash TEXT NOT NULL,
+      nickname TEXT,
+      avatar TEXT,
+      tier TEXT DEFAULT 'free',
+      tierExpiry TEXT,
+      quotaBalance INTEGER DEFAULT 0,
+      createdAt TEXT,
+      lastLoginAt TEXT
+    )
+  `);
+
   // 建立索引
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_records_type ON records(type);
@@ -90,6 +106,8 @@ function createTables() {
     CREATE INDEX IF NOT EXISTS idx_records_capturedAt ON records(capturedAt);
     CREATE INDEX IF NOT EXISTS idx_quotas_status ON quotas(status);
     CREATE INDEX IF NOT EXISTS idx_quotas_lastUsed ON quotas(lastUsed);
+    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+    CREATE INDEX IF NOT EXISTS idx_users_tier ON users(tier);
   `);
 }
 
@@ -350,6 +368,70 @@ function rowToQuota(row) {
   };
 }
 
+// ==================== Users CRUD ====================
+
+function getAllUsers() {
+  const rows = db.prepare('SELECT * FROM users ORDER BY createdAt DESC').all();
+  return rows;
+}
+
+function getUser(id) {
+  return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+}
+
+function getUserByEmail(email) {
+  return db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+}
+
+function createUser(user) {
+  const stmt = db.prepare(`
+    INSERT INTO users (id, email, passwordHash, nickname, avatar, tier, tierExpiry, quotaBalance, createdAt, lastLoginAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  stmt.run(
+    user.id,
+    user.email,
+    user.passwordHash,
+    user.nickname || null,
+    user.avatar || null,
+    user.tier || 'free',
+    user.tierExpiry || null,
+    user.quotaBalance || 0,
+    user.createdAt || new Date().toISOString(),
+    user.lastLoginAt || null
+  );
+  return user;
+}
+
+function updateUser(id, updates) {
+  const user = getUser(id);
+  if (!user) return null;
+
+  const merged = { ...user, ...updates };
+  const stmt = db.prepare(`
+    UPDATE users SET
+      email = ?, passwordHash = ?, nickname = ?, avatar = ?,
+      tier = ?, tierExpiry = ?, quotaBalance = ?, lastLoginAt = ?
+    WHERE id = ?
+  `);
+  stmt.run(
+    merged.email,
+    merged.passwordHash,
+    merged.nickname,
+    merged.avatar,
+    merged.tier,
+    merged.tierExpiry,
+    merged.quotaBalance,
+    merged.lastLoginAt,
+    id
+  );
+  return merged;
+}
+
+function deleteUser(id) {
+  db.prepare('DELETE FROM users WHERE id = ?').run(id);
+}
+
 // ==================== 關閉資料庫 ====================
 
 function close() {
@@ -380,5 +462,12 @@ module.exports = {
   getAllQuotas,
   getQuota,
   upsertQuota,
-  deleteQuota
+  deleteQuota,
+  // Users
+  getAllUsers,
+  getUser,
+  getUserByEmail,
+  createUser,
+  updateUser,
+  deleteUser
 };
