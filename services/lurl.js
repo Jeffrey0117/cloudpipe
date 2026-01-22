@@ -3713,6 +3713,7 @@ function memberQuotaPage(user) {
     .header nav { display: flex; gap: 20px; align-items: center; }
     .header nav a { color: #aaa; text-decoration: none; font-size: 0.95em; }
     .header nav a:hover { color: white; }
+    .header nav a.active { color: white; }
     .header .user-info { display: flex; align-items: center; gap: 12px; }
     .header .user-info .nickname { color: #4ade80; font-weight: 500; }
     .header .logout-btn { color: #888; font-size: 0.85em; cursor: pointer; }
@@ -3746,7 +3747,9 @@ function memberQuotaPage(user) {
     <a href="/lurl/"><img src="/lurl/files/LOGO.png" alt="Lurl" class="logo"></a>
     <nav>
       <a href="/lurl/browse">瀏覽</a>
-      <a href="/lurl/member/quota" style="color:white;">額度</a>
+      <a href="/lurl/member/history">歷史</a>
+      <a href="/lurl/member/quota" class="active">額度</a>
+      <a href="/lurl/member/profile">個人</a>
       <div class="user-info">
         <span class="nickname">${user.nickname || user.email.split('@')[0]}</span>
         <span class="logout-btn" onclick="logout()">登出</span>
@@ -3808,6 +3811,445 @@ function memberQuotaPage(user) {
   </main>
 
   <script>
+    async function logout() {
+      await fetch('/lurl/api/auth/logout', { method: 'POST' });
+      window.location.href = '/lurl/';
+    }
+  </script>
+</body>
+</html>`;
+}
+
+// ==================== Member History Page ====================
+
+function memberHistoryPage(user) {
+  return `<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <link rel="icon" type="image/png" href="/lurl/files/LOGO.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>觀看歷史 - Lurl</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: white; min-height: 100vh; }
+    .header { background: #1a1a2e; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+    .header .logo { height: 36px; width: auto; }
+    .header nav { display: flex; gap: 20px; align-items: center; }
+    .header nav a { color: #aaa; text-decoration: none; font-size: 0.95em; }
+    .header nav a:hover { color: white; }
+    .header nav a.active { color: white; }
+    .header .user-info { display: flex; align-items: center; gap: 12px; }
+    .header .user-info .nickname { color: #4ade80; font-weight: 500; }
+    .header .logout-btn { color: #888; font-size: 0.85em; cursor: pointer; }
+    .header .logout-btn:hover { color: #ef4444; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 40px 20px; }
+    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; flex-wrap: wrap; gap: 20px; }
+    .page-header h2 { font-size: 1.8em; }
+    .page-header p { color: #888; margin-top: 5px; }
+    .clear-btn { background: transparent; border: 1px solid #ef4444; color: #ef4444; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.9em; }
+    .clear-btn:hover { background: #ef4444; color: white; }
+    .history-list { display: flex; flex-direction: column; gap: 12px; }
+    .history-item { display: flex; gap: 16px; background: #1a1a1a; border-radius: 12px; padding: 16px; transition: background 0.2s; }
+    .history-item:hover { background: #222; }
+    .history-thumb { width: 160px; height: 90px; border-radius: 8px; object-fit: cover; background: #333; flex-shrink: 0; }
+    .history-info { flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
+    .history-title { font-weight: 500; margin-bottom: 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .history-title a { color: white; text-decoration: none; }
+    .history-title a:hover { color: #4ade80; }
+    .history-meta { display: flex; gap: 16px; color: #888; font-size: 0.85em; }
+    .history-actions { display: flex; gap: 8px; }
+    .history-actions button { background: transparent; border: 1px solid #444; color: #888; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8em; }
+    .history-actions button:hover { border-color: #666; color: white; }
+    .history-actions button.delete:hover { border-color: #ef4444; color: #ef4444; }
+    .empty-state { text-align: center; padding: 60px 20px; color: #666; }
+    .empty-state h3 { font-size: 1.5em; margin-bottom: 10px; color: #888; }
+    .empty-state a { color: #4ade80; text-decoration: none; }
+    .pagination { display: flex; justify-content: center; gap: 8px; margin-top: 30px; }
+    .pagination button { background: #1a1a1a; border: none; color: white; padding: 10px 16px; border-radius: 6px; cursor: pointer; }
+    .pagination button:hover { background: #333; }
+    .pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .loading { text-align: center; padding: 40px; color: #888; }
+    @media (max-width: 600px) {
+      .history-item { flex-direction: column; }
+      .history-thumb { width: 100%; height: auto; aspect-ratio: 16/9; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <a href="/lurl/"><img src="/lurl/files/LOGO.png" alt="Lurl" class="logo"></a>
+    <nav>
+      <a href="/lurl/browse">瀏覽</a>
+      <a href="/lurl/member/history" class="active">歷史</a>
+      <a href="/lurl/member/quota">額度</a>
+      <a href="/lurl/member/profile">個人</a>
+      <div class="user-info">
+        <span class="nickname">${user.nickname || user.email.split('@')[0]}</span>
+        <span class="logout-btn" onclick="logout()">登出</span>
+      </div>
+    </nav>
+  </header>
+
+  <main class="container">
+    <div class="page-header">
+      <div>
+        <h2>📺 觀看歷史</h2>
+        <p id="historyCount">載入中...</p>
+      </div>
+      <button class="clear-btn" onclick="clearAllHistory()">清除全部</button>
+    </div>
+
+    <div id="historyList" class="history-list">
+      <div class="loading">載入中...</div>
+    </div>
+
+    <div class="pagination" id="pagination" style="display:none;">
+      <button id="prevBtn" onclick="loadPage(currentPage - 1)">上一頁</button>
+      <span id="pageInfo" style="padding: 10px 16px; color: #888;"></span>
+      <button id="nextBtn" onclick="loadPage(currentPage + 1)">下一頁</button>
+    </div>
+  </main>
+
+  <script>
+    let currentPage = 1;
+    const pageSize = 20;
+    let totalCount = 0;
+
+    async function loadHistory(page = 1) {
+      currentPage = page;
+      const offset = (page - 1) * pageSize;
+
+      try {
+        const res = await fetch('/lurl/api/member/history?limit=' + pageSize + '&offset=' + offset);
+        const data = await res.json();
+
+        if (!data.ok) {
+          document.getElementById('historyList').innerHTML = '<div class="empty-state"><h3>載入失敗</h3><p>' + (data.error || '請稍後再試') + '</p></div>';
+          return;
+        }
+
+        totalCount = data.total;
+        document.getElementById('historyCount').textContent = '共 ' + totalCount + ' 筆記錄';
+
+        if (data.history.length === 0) {
+          document.getElementById('historyList').innerHTML = '<div class="empty-state"><h3>還沒有觀看記錄</h3><p>去 <a href="/lurl/browse">瀏覽</a> 看看吧</p></div>';
+          document.getElementById('pagination').style.display = 'none';
+          return;
+        }
+
+        const html = data.history.map(item => {
+          const date = new Date(item.watchedAt).toLocaleString('zh-TW');
+          const thumb = item.thumbnailPath ? '/lurl/files/' + item.thumbnailPath : '/lurl/files/placeholder.png';
+          return '<div class="history-item" data-id="' + item.recordId + '">' +
+            '<img src="' + thumb + '" alt="" class="history-thumb" onerror="this.src=\\'/lurl/files/placeholder.png\\'">' +
+            '<div class="history-info">' +
+              '<div class="history-title"><a href="/lurl/view/' + item.recordId + '">' + (item.title || '無標題') + '</a></div>' +
+              '<div class="history-meta">' +
+                '<span>📅 ' + date + '</span>' +
+                '<span>🎬 ' + (item.type || 'video') + '</span>' +
+              '</div>' +
+              '<div class="history-actions">' +
+                '<button onclick="window.location.href=\\'/lurl/view/' + item.recordId + '\\'">觀看</button>' +
+                '<button class="delete" onclick="deleteItem(\\'' + item.recordId + '\\')">移除</button>' +
+              '</div>' +
+            '</div>' +
+          '</div>';
+        }).join('');
+
+        document.getElementById('historyList').innerHTML = html;
+
+        // Update pagination
+        const totalPages = Math.ceil(totalCount / pageSize);
+        if (totalPages > 1) {
+          document.getElementById('pagination').style.display = 'flex';
+          document.getElementById('pageInfo').textContent = page + ' / ' + totalPages;
+          document.getElementById('prevBtn').disabled = page <= 1;
+          document.getElementById('nextBtn').disabled = page >= totalPages;
+        } else {
+          document.getElementById('pagination').style.display = 'none';
+        }
+      } catch (err) {
+        console.error(err);
+        document.getElementById('historyList').innerHTML = '<div class="empty-state"><h3>載入失敗</h3><p>請稍後再試</p></div>';
+      }
+    }
+
+    function loadPage(page) {
+      loadHistory(page);
+    }
+
+    async function deleteItem(recordId) {
+      if (!confirm('確定要移除這筆記錄？')) return;
+
+      try {
+        const res = await fetch('/lurl/api/member/history/' + recordId, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.ok) {
+          loadHistory(currentPage);
+        } else {
+          alert('移除失敗: ' + (data.error || '未知錯誤'));
+        }
+      } catch (err) {
+        alert('移除失敗');
+      }
+    }
+
+    async function clearAllHistory() {
+      if (!confirm('確定要清除全部觀看記錄？此操作無法復原。')) return;
+
+      try {
+        const res = await fetch('/lurl/api/member/history', { method: 'DELETE' });
+        const data = await res.json();
+        if (data.ok) {
+          loadHistory(1);
+        } else {
+          alert('清除失敗: ' + (data.error || '未知錯誤'));
+        }
+      } catch (err) {
+        alert('清除失敗');
+      }
+    }
+
+    async function logout() {
+      await fetch('/lurl/api/auth/logout', { method: 'POST' });
+      window.location.href = '/lurl/';
+    }
+
+    loadHistory(1);
+  </script>
+</body>
+</html>`;
+}
+
+// ==================== Member Profile Page ====================
+
+function memberProfilePage(user) {
+  const tierNames = { free: '免費仔', basic: '會員', premium: '老司機' };
+  const tierName = tierNames[user.tier] || '免費仔';
+
+  return `<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <link rel="icon" type="image/png" href="/lurl/files/LOGO.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>個人資料 - Lurl</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: white; min-height: 100vh; }
+    .header { background: #1a1a2e; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+    .header .logo { height: 36px; width: auto; }
+    .header nav { display: flex; gap: 20px; align-items: center; }
+    .header nav a { color: #aaa; text-decoration: none; font-size: 0.95em; }
+    .header nav a:hover { color: white; }
+    .header nav a.active { color: white; }
+    .header .user-info { display: flex; align-items: center; gap: 12px; }
+    .header .user-info .nickname { color: #4ade80; font-weight: 500; }
+    .header .logout-btn { color: #888; font-size: 0.85em; cursor: pointer; }
+    .header .logout-btn:hover { color: #ef4444; }
+    .container { max-width: 600px; margin: 0 auto; padding: 40px 20px; }
+    .page-header { margin-bottom: 30px; }
+    .page-header h2 { font-size: 1.8em; margin-bottom: 8px; }
+    .page-header p { color: #888; }
+    .profile-card { background: #1a1a1a; border-radius: 16px; padding: 30px; margin-bottom: 20px; }
+    .avatar-section { display: flex; align-items: center; gap: 20px; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid #333; }
+    .avatar { width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, #4ade80, #22c55e); display: flex; align-items: center; justify-content: center; font-size: 2em; font-weight: 600; }
+    .avatar-info h3 { margin-bottom: 5px; }
+    .avatar-info .tier { display: inline-block; background: #4ade80; color: #000; padding: 3px 10px; border-radius: 12px; font-size: 0.8em; font-weight: 600; }
+    .form-group { margin-bottom: 20px; }
+    .form-group label { display: block; color: #888; margin-bottom: 8px; font-size: 0.9em; }
+    .form-group input { width: 100%; background: #0f0f0f; border: 1px solid #333; border-radius: 8px; padding: 12px 16px; color: white; font-size: 1em; }
+    .form-group input:focus { outline: none; border-color: #4ade80; }
+    .form-group input:disabled { opacity: 0.6; cursor: not-allowed; }
+    .form-group .hint { color: #666; font-size: 0.8em; margin-top: 6px; }
+    .save-btn { width: 100%; background: #4ade80; color: #000; border: none; padding: 14px; border-radius: 8px; font-size: 1em; font-weight: 600; cursor: pointer; margin-top: 10px; }
+    .save-btn:hover { background: #22c55e; }
+    .save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .message { padding: 12px; border-radius: 8px; margin-bottom: 20px; display: none; }
+    .message.success { display: block; background: #1a2e1a; border: 1px solid #4ade80; color: #4ade80; }
+    .message.error { display: block; background: #2e1a1a; border: 1px solid #ef4444; color: #ef4444; }
+    .danger-zone { background: #1a1a1a; border: 1px solid #ef4444; border-radius: 12px; padding: 24px; margin-top: 30px; }
+    .danger-zone h3 { color: #ef4444; margin-bottom: 12px; }
+    .danger-zone p { color: #888; margin-bottom: 16px; font-size: 0.9em; }
+    .danger-btn { background: transparent; border: 1px solid #ef4444; color: #ef4444; padding: 10px 20px; border-radius: 6px; cursor: pointer; }
+    .danger-btn:hover { background: #ef4444; color: white; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <a href="/lurl/"><img src="/lurl/files/LOGO.png" alt="Lurl" class="logo"></a>
+    <nav>
+      <a href="/lurl/browse">瀏覽</a>
+      <a href="/lurl/member/history">歷史</a>
+      <a href="/lurl/member/quota">額度</a>
+      <a href="/lurl/member/profile" class="active">個人</a>
+      <div class="user-info">
+        <span class="nickname">${user.nickname || user.email.split('@')[0]}</span>
+        <span class="logout-btn" onclick="logout()">登出</span>
+      </div>
+    </nav>
+  </header>
+
+  <main class="container">
+    <div class="page-header">
+      <h2>👤 個人資料</h2>
+      <p>管理你的帳號設定</p>
+    </div>
+
+    <div id="message" class="message"></div>
+
+    <div class="profile-card">
+      <div class="avatar-section">
+        <div class="avatar">${(user.nickname || user.email)[0].toUpperCase()}</div>
+        <div class="avatar-info">
+          <h3>${user.nickname || user.email.split('@')[0]}</h3>
+          <span class="tier">${tierName}</span>
+        </div>
+      </div>
+
+      <form id="profileForm" onsubmit="saveProfile(event)">
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" value="${user.email}" disabled>
+          <div class="hint">Email 無法變更</div>
+        </div>
+
+        <div class="form-group">
+          <label>暱稱</label>
+          <input type="text" id="nickname" value="${user.nickname || ''}" placeholder="設定一個暱稱" maxlength="20">
+        </div>
+
+        <div class="form-group">
+          <label>加入時間</label>
+          <input type="text" value="${new Date(user.createdAt).toLocaleDateString('zh-TW')}" disabled>
+        </div>
+
+        <button type="submit" class="save-btn" id="saveBtn">儲存變更</button>
+      </form>
+    </div>
+
+    <div class="profile-card">
+      <h3 style="margin-bottom: 20px;">🔐 變更密碼</h3>
+      <form id="passwordForm" onsubmit="changePassword(event)">
+        <div class="form-group">
+          <label>目前密碼</label>
+          <input type="password" id="currentPassword" placeholder="輸入目前密碼" required>
+        </div>
+        <div class="form-group">
+          <label>新密碼</label>
+          <input type="password" id="newPassword" placeholder="輸入新密碼（至少 6 字元）" minlength="6" required>
+        </div>
+        <div class="form-group">
+          <label>確認新密碼</label>
+          <input type="password" id="confirmPassword" placeholder="再次輸入新密碼" required>
+        </div>
+        <button type="submit" class="save-btn" id="pwdBtn">變更密碼</button>
+      </form>
+    </div>
+
+    <div class="danger-zone">
+      <h3>⚠️ 危險區域</h3>
+      <p>刪除帳號後，所有資料將永久消失，包括觀看歷史、收藏等。此操作無法復原。</p>
+      <button class="danger-btn" onclick="deleteAccount()">刪除帳號</button>
+    </div>
+  </main>
+
+  <script>
+    function showMessage(type, text) {
+      const el = document.getElementById('message');
+      el.className = 'message ' + type;
+      el.textContent = text;
+      setTimeout(() => { el.className = 'message'; }, 5000);
+    }
+
+    async function saveProfile(e) {
+      e.preventDefault();
+      const btn = document.getElementById('saveBtn');
+      btn.disabled = true;
+      btn.textContent = '儲存中...';
+
+      try {
+        const res = await fetch('/lurl/api/member/profile', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nickname: document.getElementById('nickname').value })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showMessage('success', '資料已更新');
+        } else {
+          showMessage('error', data.error || '更新失敗');
+        }
+      } catch (err) {
+        showMessage('error', '網路錯誤');
+      }
+
+      btn.disabled = false;
+      btn.textContent = '儲存變更';
+    }
+
+    async function changePassword(e) {
+      e.preventDefault();
+      const newPwd = document.getElementById('newPassword').value;
+      const confirmPwd = document.getElementById('confirmPassword').value;
+
+      if (newPwd !== confirmPwd) {
+        showMessage('error', '兩次輸入的密碼不一致');
+        return;
+      }
+
+      const btn = document.getElementById('pwdBtn');
+      btn.disabled = true;
+      btn.textContent = '變更中...';
+
+      try {
+        const res = await fetch('/lurl/api/member/password', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            currentPassword: document.getElementById('currentPassword').value,
+            newPassword: newPwd
+          })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showMessage('success', '密碼已更新');
+          document.getElementById('passwordForm').reset();
+        } else {
+          showMessage('error', data.error || '密碼變更失敗');
+        }
+      } catch (err) {
+        showMessage('error', '網路錯誤');
+      }
+
+      btn.disabled = false;
+      btn.textContent = '變更密碼';
+    }
+
+    async function deleteAccount() {
+      const confirm1 = confirm('確定要刪除帳號嗎？此操作無法復原！');
+      if (!confirm1) return;
+      const confirm2 = prompt('請輸入 "DELETE" 確認刪除：');
+      if (confirm2 !== 'DELETE') {
+        alert('取消刪除');
+        return;
+      }
+
+      try {
+        const res = await fetch('/lurl/api/member/account', { method: 'DELETE' });
+        const data = await res.json();
+        if (data.ok) {
+          alert('帳號已刪除');
+          window.location.href = '/lurl/';
+        } else {
+          alert('刪除失敗: ' + (data.error || '未知錯誤'));
+        }
+      } catch (err) {
+        alert('刪除失敗');
+      }
+    }
+
     async function logout() {
       await fetch('/lurl/api/auth/logout', { method: 'POST' });
       window.location.href = '/lurl/';
@@ -5363,6 +5805,17 @@ function viewPage(record, fileExists) {
     initPlayer();
   </script>
   ` : ''}
+  <script>
+    // 記錄觀看歷史
+    (function() {
+      const recordId = '${record.id}';
+      fetch('/lurl/api/member/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recordId, progress: 0 })
+      }).catch(() => {});  // 忽略錯誤（未登入時會失敗）
+    })();
+  </script>
 </body>
 </html>`;
 }
@@ -5700,6 +6153,218 @@ module.exports = {
         ok: true,
         remaining: user.quotaBalance - 1
       }));
+      return;
+    }
+
+    // ==================== Member History ====================
+
+    // GET /member/history - 觀看歷史頁面
+    if (req.method === 'GET' && urlPath === '/member/history') {
+      const user = getMemberFromRequest(req);
+      if (!user) {
+        res.writeHead(302, { 'Location': '/lurl/member/login?redirect=/lurl/member/history' });
+        res.end();
+        return;
+      }
+      sendCompressed(req, res, 200, corsHeaders('text/html; charset=utf-8'), memberHistoryPage(user));
+      return;
+    }
+
+    // GET /api/member/history - 取得觀看歷史
+    if (req.method === 'GET' && urlPath === '/api/member/history') {
+      const user = getMemberFromRequest(req);
+      if (!user) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '未登入' }));
+        return;
+      }
+
+      const limit = parseInt(query.limit) || 20;
+      const offset = parseInt(query.offset) || 0;
+      const history = lurlDb.getWatchHistory(user.id, limit, offset);
+      const total = lurlDb.getWatchHistoryCount(user.id);
+
+      res.writeHead(200, corsHeaders());
+      res.end(JSON.stringify({ ok: true, history, total }));
+      return;
+    }
+
+    // POST /api/member/history - 記錄觀看歷史
+    if (req.method === 'POST' && urlPath === '/api/member/history') {
+      const user = getMemberFromRequest(req);
+      if (!user) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '未登入' }));
+        return;
+      }
+
+      try {
+        const body = await parseBody(req);
+        const { recordId, progress } = body;
+
+        if (!recordId) {
+          res.writeHead(400, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: '缺少 recordId' }));
+          return;
+        }
+
+        lurlDb.upsertWatchHistory(user.id, recordId, progress || 0);
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ ok: true }));
+      } catch (err) {
+        console.error('[history] 記錄失敗:', err);
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '記錄失敗' }));
+      }
+      return;
+    }
+
+    // DELETE /api/member/history - 清除全部歷史
+    if (req.method === 'DELETE' && urlPath === '/api/member/history') {
+      const user = getMemberFromRequest(req);
+      if (!user) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '未登入' }));
+        return;
+      }
+
+      lurlDb.clearWatchHistory(user.id);
+      res.writeHead(200, corsHeaders());
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    // DELETE /api/member/history/:recordId - 刪除單筆歷史
+    if (req.method === 'DELETE' && urlPath.startsWith('/api/member/history/')) {
+      const user = getMemberFromRequest(req);
+      if (!user) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '未登入' }));
+        return;
+      }
+
+      const recordId = urlPath.replace('/api/member/history/', '');
+      lurlDb.deleteWatchHistoryItem(user.id, recordId);
+      res.writeHead(200, corsHeaders());
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    // ==================== Member Profile ====================
+
+    // GET /member/profile - 個人資料頁面
+    if (req.method === 'GET' && urlPath === '/member/profile') {
+      const user = getMemberFromRequest(req);
+      if (!user) {
+        res.writeHead(302, { 'Location': '/lurl/member/login?redirect=/lurl/member/profile' });
+        res.end();
+        return;
+      }
+      sendCompressed(req, res, 200, corsHeaders('text/html; charset=utf-8'), memberProfilePage(user));
+      return;
+    }
+
+    // PUT /api/member/profile - 更新個人資料
+    if (req.method === 'PUT' && urlPath === '/api/member/profile') {
+      const user = getMemberFromRequest(req);
+      if (!user) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '未登入' }));
+        return;
+      }
+
+      try {
+        const body = await parseBody(req);
+        const { nickname } = body;
+
+        // 驗證暱稱
+        if (nickname && nickname.length > 20) {
+          res.writeHead(400, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: '暱稱最多 20 個字元' }));
+          return;
+        }
+
+        lurlDb.updateUser(user.id, { nickname: nickname || null });
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ ok: true }));
+      } catch (err) {
+        console.error('[profile] 更新失敗:', err);
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '更新失敗' }));
+      }
+      return;
+    }
+
+    // PUT /api/member/password - 變更密碼
+    if (req.method === 'PUT' && urlPath === '/api/member/password') {
+      const user = getMemberFromRequest(req);
+      if (!user) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '未登入' }));
+        return;
+      }
+
+      try {
+        const body = await parseBody(req);
+        const { currentPassword, newPassword } = body;
+
+        if (!currentPassword || !newPassword) {
+          res.writeHead(400, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: '請填寫完整' }));
+          return;
+        }
+
+        if (newPassword.length < 6) {
+          res.writeHead(400, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: '新密碼至少需要 6 個字元' }));
+          return;
+        }
+
+        // 驗證目前密碼
+        if (!verifyPassword(currentPassword, user.passwordHash)) {
+          res.writeHead(401, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: '目前密碼錯誤' }));
+          return;
+        }
+
+        // 更新密碼
+        const newHash = hashPassword(newPassword);
+        lurlDb.updateUser(user.id, { passwordHash: newHash });
+
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ ok: true }));
+      } catch (err) {
+        console.error('[password] 變更失敗:', err);
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '變更失敗' }));
+      }
+      return;
+    }
+
+    // DELETE /api/member/account - 刪除帳號
+    if (req.method === 'DELETE' && urlPath === '/api/member/account') {
+      const user = getMemberFromRequest(req);
+      if (!user) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '未登入' }));
+        return;
+      }
+
+      try {
+        // 刪除相關資料
+        lurlDb.clearWatchHistory(user.id);
+        lurlDb.deleteUser(user.id);
+
+        res.writeHead(200, {
+          ...corsHeaders(),
+          'Set-Cookie': 'lurl_member_token=; Path=/lurl; HttpOnly; Max-Age=0'
+        });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (err) {
+        console.error('[account] 刪除失敗:', err);
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '刪除失敗' }));
+      }
       return;
     }
 

@@ -99,6 +99,18 @@ function createTables() {
     )
   `);
 
+  // Watch History 表（觀看歷史）
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS watch_history (
+      id TEXT PRIMARY KEY,
+      userId TEXT NOT NULL,
+      recordId TEXT NOT NULL,
+      watchedAt TEXT,
+      progress INTEGER DEFAULT 0,
+      UNIQUE(userId, recordId)
+    )
+  `);
+
   // 建立索引
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_records_type ON records(type);
@@ -108,6 +120,8 @@ function createTables() {
     CREATE INDEX IF NOT EXISTS idx_quotas_lastUsed ON quotas(lastUsed);
     CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
     CREATE INDEX IF NOT EXISTS idx_users_tier ON users(tier);
+    CREATE INDEX IF NOT EXISTS idx_watch_history_userId ON watch_history(userId);
+    CREATE INDEX IF NOT EXISTS idx_watch_history_watchedAt ON watch_history(watchedAt);
   `);
 }
 
@@ -432,6 +446,51 @@ function deleteUser(id) {
   db.prepare('DELETE FROM users WHERE id = ?').run(id);
 }
 
+// ==================== Watch History CRUD ====================
+
+function getWatchHistory(userId, limit = 50, offset = 0) {
+  const rows = db.prepare(`
+    SELECT wh.*, r.title, r.type, r.thumbnailPath, r.pageUrl
+    FROM watch_history wh
+    LEFT JOIN records r ON wh.recordId = r.id
+    WHERE wh.userId = ?
+    ORDER BY wh.watchedAt DESC
+    LIMIT ? OFFSET ?
+  `).all(userId, limit, offset);
+  return rows;
+}
+
+function getWatchHistoryCount(userId) {
+  const result = db.prepare('SELECT COUNT(*) as count FROM watch_history WHERE userId = ?').get(userId);
+  return result.count;
+}
+
+function getWatchHistoryItem(userId, recordId) {
+  return db.prepare('SELECT * FROM watch_history WHERE userId = ? AND recordId = ?').get(userId, recordId);
+}
+
+function upsertWatchHistory(userId, recordId, progress = 0) {
+  const id = `${userId}_${recordId}`;
+  const now = new Date().toISOString();
+  const stmt = db.prepare(`
+    INSERT INTO watch_history (id, userId, recordId, watchedAt, progress)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(userId, recordId) DO UPDATE SET
+      watchedAt = excluded.watchedAt,
+      progress = excluded.progress
+  `);
+  stmt.run(id, userId, recordId, now, progress);
+  return { id, userId, recordId, watchedAt: now, progress };
+}
+
+function deleteWatchHistoryItem(userId, recordId) {
+  db.prepare('DELETE FROM watch_history WHERE userId = ? AND recordId = ?').run(userId, recordId);
+}
+
+function clearWatchHistory(userId) {
+  db.prepare('DELETE FROM watch_history WHERE userId = ?').run(userId);
+}
+
 // ==================== 關閉資料庫 ====================
 
 function close() {
@@ -469,5 +528,12 @@ module.exports = {
   getUserByEmail,
   createUser,
   updateUser,
-  deleteUser
+  deleteUser,
+  // Watch History
+  getWatchHistory,
+  getWatchHistoryCount,
+  getWatchHistoryItem,
+  upsertWatchHistory,
+  deleteWatchHistoryItem,
+  clearWatchHistory
 };
