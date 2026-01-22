@@ -2541,56 +2541,71 @@ function landingPage() {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lurl - 影片備份服務</title>
   <style>
+    :root {
+      --bg-primary: #f8fafc; --bg-secondary: #ffffff; --bg-accent: #e8f4f8; --bg-section: #f0f9fc;
+      --text-primary: #1f2937; --text-secondary: #374151; --text-muted: #64748b; --text-subtle: #94a3b8;
+      --accent: #5BB4D4; --accent-hover: #4AABCC; --border: #e2e8f0; --border-light: #d1e9f0;
+      --shadow: rgba(0,0,0,0.06); --shadow-md: rgba(0,0,0,0.08);
+    }
+    [data-theme="dark"] {
+      --bg-primary: #0f172a; --bg-secondary: #1e293b; --bg-accent: #1e3a5a; --bg-section: #111827;
+      --text-primary: #f1f5f9; --text-secondary: #e2e8f0; --text-muted: #94a3b8; --text-subtle: #64748b;
+      --accent: #5BB4D4; --accent-hover: #7EC8E3; --border: #334155; --border-light: #3d5a80;
+      --shadow: rgba(0,0,0,0.3); --shadow-md: rgba(0,0,0,0.4);
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #1f2937; min-height: 100vh; line-height: 1.6; }
-    .header { background: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; line-height: 1.6; transition: background 0.3s, color 0.3s; }
+    .header { background: var(--bg-secondary); padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 3px var(--shadow-md); }
     .header .logo-title { display: flex; align-items: center; gap: 10px; }
     .header .logo { height: 36px; width: auto; }
+    .header .header-right { display: flex; align-items: center; gap: 12px; }
     .header nav { display: flex; gap: 20px; }
-    .header nav a { color: #64748b; text-decoration: none; font-size: 0.95em; transition: color 0.2s; }
-    .header nav a:hover { color: #5BB4D4; }
-    .header .login-btn { background: #5BB4D4; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 0.9em; }
-    .header .login-btn:hover { background: #4AABCC; }
+    .header nav a { color: var(--text-muted); text-decoration: none; font-size: 0.95em; transition: color 0.2s; }
+    .header nav a:hover { color: var(--accent); }
+    .header .login-btn { background: var(--accent); color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 0.9em; }
+    .header .login-btn:hover { background: var(--accent-hover); }
+    .theme-toggle { background: var(--bg-accent); border: none; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; font-size: 1.1em; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+    .theme-toggle:hover { background: var(--border); }
 
-    .hero { text-align: center; padding: 100px 20px 80px; background: linear-gradient(180deg, #e8f4f8 0%, #f8fafc 100%); }
-    .hero h2 { font-size: 2.2em; font-weight: 600; margin-bottom: 16px; color: #1f2937; }
-    .hero .subtitle { font-size: 1.1em; color: #64748b; margin-bottom: 40px; max-width: 500px; margin-left: auto; margin-right: auto; }
+    .hero { text-align: center; padding: 100px 20px 80px; background: linear-gradient(180deg, var(--bg-accent) 0%, var(--bg-primary) 100%); }
+    .hero h2 { font-size: 2.2em; font-weight: 600; margin-bottom: 16px; color: var(--text-primary); }
+    .hero .subtitle { font-size: 1.1em; color: var(--text-muted); margin-bottom: 40px; max-width: 500px; margin-left: auto; margin-right: auto; }
     .hero-cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-    .btn-primary { background: #5BB4D4; color: white; padding: 12px 24px; border-radius: 8px; font-size: 1em; font-weight: 500; text-decoration: none; transition: all 0.2s; }
-    .btn-primary:hover { background: #4AABCC; }
-    .btn-secondary { background: white; color: #5BB4D4; padding: 12px 24px; border-radius: 8px; font-size: 1em; text-decoration: none; transition: all 0.2s; border: 1px solid #d1e9f0; }
-    .btn-secondary:hover { background: #e8f4f8; }
+    .btn-primary { background: var(--accent); color: white; padding: 12px 24px; border-radius: 8px; font-size: 1em; font-weight: 500; text-decoration: none; transition: all 0.2s; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-secondary { background: var(--bg-secondary); color: var(--accent); padding: 12px 24px; border-radius: 8px; font-size: 1em; text-decoration: none; transition: all 0.2s; border: 1px solid var(--border-light); }
+    .btn-secondary:hover { background: var(--bg-accent); }
 
     .section { padding: 60px 20px; max-width: 900px; margin: 0 auto; }
-    .section-title { font-size: 1.3em; font-weight: 600; margin-bottom: 30px; color: #374151; }
+    .section-title { font-size: 1.3em; font-weight: 600; margin-bottom: 30px; color: var(--text-secondary); }
     .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
-    .step { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
-    .step-number { width: 36px; height: 36px; background: #e8f4f8; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1em; font-weight: 600; margin-bottom: 16px; color: #5BB4D4; }
-    .step h3 { font-size: 1em; font-weight: 500; margin-bottom: 8px; color: #374151; }
-    .step p { color: #64748b; font-size: 0.9em; }
+    .step { background: var(--bg-secondary); border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px var(--shadow); }
+    .step-number { width: 36px; height: 36px; background: var(--bg-accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1em; font-weight: 600; margin-bottom: 16px; color: var(--accent); }
+    .step h3 { font-size: 1em; font-weight: 500; margin-bottom: 8px; color: var(--text-secondary); }
+    .step p { color: var(--text-muted); font-size: 0.9em; }
 
-    .features { background: white; border-radius: 12px; padding: 30px; margin-top: 30px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
-    .features h3 { font-size: 1.1em; font-weight: 500; margin-bottom: 20px; color: #374151; }
-    .features ul { list-style: none; color: #64748b; }
+    .features { background: var(--bg-secondary); border-radius: 12px; padding: 30px; margin-top: 30px; box-shadow: 0 1px 3px var(--shadow); }
+    .features h3 { font-size: 1.1em; font-weight: 500; margin-bottom: 20px; color: var(--text-secondary); }
+    .features ul { list-style: none; color: var(--text-muted); }
     .features li { margin-bottom: 10px; padding-left: 20px; position: relative; font-size: 0.95em; }
-    .features li::before { content: ''; position: absolute; left: 0; top: 8px; width: 6px; height: 6px; background: #5BB4D4; border-radius: 50%; }
+    .features li::before { content: ''; position: absolute; left: 0; top: 8px; width: 6px; height: 6px; background: var(--accent); border-radius: 50%; }
 
-    .pricing-section { padding: 60px 20px; background: #f0f9fc; }
+    .pricing-section { padding: 60px 20px; background: var(--bg-section); }
     .pricing-section .section-title { text-align: center; margin-bottom: 40px; }
     .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; max-width: 900px; margin: 0 auto 30px; }
-    .pricing-card { background: white; border-radius: 12px; padding: 24px; border: 1px solid #e2e8f0; }
-    .pricing-card.featured { border-color: #5BB4D4; box-shadow: 0 0 0 1px #5BB4D4; }
-    .pricing-card h4 { font-size: 1em; font-weight: 500; margin-bottom: 8px; color: #374151; }
-    .pricing-card .price { font-size: 1.5em; font-weight: 600; color: #1f2937; margin-bottom: 4px; }
-    .pricing-card .price small { font-size: 0.5em; color: #94a3b8; }
-    .pricing-card .desc { color: #64748b; font-size: 0.85em; }
-    .pricing-cta { display: block; text-align: center; color: #5BB4D4; text-decoration: none; font-size: 0.95em; margin-top: 20px; }
+    .pricing-card { background: var(--bg-secondary); border-radius: 12px; padding: 24px; border: 1px solid var(--border); }
+    .pricing-card.featured { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .pricing-card h4 { font-size: 1em; font-weight: 500; margin-bottom: 8px; color: var(--text-secondary); }
+    .pricing-card .price { font-size: 1.5em; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+    .pricing-card .price small { font-size: 0.5em; color: var(--text-subtle); }
+    .pricing-card .desc { color: var(--text-muted); font-size: 0.85em; }
+    .pricing-cta { display: block; text-align: center; color: var(--accent); text-decoration: none; font-size: 0.95em; margin-top: 20px; }
     .pricing-cta:hover { text-decoration: underline; }
 
-    .footer { background: white; padding: 24px 20px; text-align: center; color: #94a3b8; font-size: 0.85em; border-top: 1px solid #e2e8f0; }
+    .footer { background: var(--bg-secondary); padding: 24px 20px; text-align: center; color: var(--text-subtle); font-size: 0.85em; border-top: 1px solid var(--border); }
     .footer-links { margin-bottom: 12px; }
-    .footer-links a { color: #64748b; text-decoration: none; margin: 0 12px; }
-    .footer-links a:hover { color: #5BB4D4; }
+    .footer-links a { color: var(--text-muted); text-decoration: none; margin: 0 12px; }
+    .footer-links a:hover { color: var(--accent); }
 
     @media (max-width: 640px) {
       .hero h2 { font-size: 1.6em; }
@@ -2608,7 +2623,10 @@ function landingPage() {
       <a href="/lurl/pricing">方案</a>
       <a href="/lurl/guide">教學</a>
     </nav>
-    <a href="/lurl/member/login" class="login-btn">登入</a>
+    <div class="header-right">
+      <button class="theme-toggle" onclick="toggleTheme()" title="切換主題">🌙</button>
+      <a href="/lurl/member/login" class="login-btn">登入</a>
+    </div>
   </header>
 
   <section class="hero">
@@ -2685,6 +2703,24 @@ function landingPage() {
     </div>
     <div>© 2026 Lurl</div>
   </footer>
+  <script>
+    function toggleTheme() {
+      const html = document.documentElement;
+      const isDark = html.getAttribute('data-theme') === 'dark';
+      html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+      localStorage.setItem('lurl-theme', isDark ? 'light' : 'dark');
+      document.querySelector('.theme-toggle').textContent = isDark ? '🌙' : '☀️';
+    }
+    (function() {
+      const saved = localStorage.getItem('lurl-theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const theme = saved || (prefersDark ? 'dark' : 'light');
+      if (theme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        document.querySelector('.theme-toggle').textContent = '☀️';
+      }
+    })();
+  </script>
 </body>
 </html>`;
 }
@@ -2700,42 +2736,57 @@ function downloadPage() {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>下載腳本 - Lurl</title>
   <style>
+    :root {
+      --bg-primary: #f8fafc; --bg-secondary: #ffffff; --bg-accent: #e8f4f8; --bg-section: #f0f9fc;
+      --text-primary: #1f2937; --text-secondary: #374151; --text-muted: #64748b; --text-subtle: #94a3b8;
+      --accent: #5BB4D4; --accent-hover: #4AABCC; --border: #e2e8f0; --border-light: #d1e9f0;
+      --shadow: rgba(0,0,0,0.06); --shadow-md: rgba(0,0,0,0.08);
+    }
+    [data-theme="dark"] {
+      --bg-primary: #0f172a; --bg-secondary: #1e293b; --bg-accent: #1e3a5a; --bg-section: #111827;
+      --text-primary: #f1f5f9; --text-secondary: #e2e8f0; --text-muted: #94a3b8; --text-subtle: #64748b;
+      --accent: #5BB4D4; --accent-hover: #7EC8E3; --border: #334155; --border-light: #3d5a80;
+      --shadow: rgba(0,0,0,0.3); --shadow-md: rgba(0,0,0,0.4);
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #1f2937; min-height: 100vh; line-height: 1.6; }
-    .header { background: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; line-height: 1.6; transition: background 0.3s, color 0.3s; }
+    .header { background: var(--bg-secondary); padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 3px var(--shadow-md); }
     .header .logo-title { display: flex; align-items: center; gap: 10px; }
     .header .logo { height: 36px; width: auto; }
+    .header .header-right { display: flex; align-items: center; gap: 12px; }
     .header nav { display: flex; gap: 20px; }
-    .header nav a { color: #64748b; text-decoration: none; font-size: 0.95em; transition: color 0.2s; }
-    .header nav a:hover, .header nav a.active { color: #5BB4D4; }
-    .header .login-btn { background: #5BB4D4; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 0.9em; }
-    .header .login-btn:hover { background: #4AABCC; }
+    .header nav a { color: var(--text-muted); text-decoration: none; font-size: 0.95em; transition: color 0.2s; }
+    .header nav a:hover, .header nav a.active { color: var(--accent); }
+    .header .login-btn { background: var(--accent); color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 0.9em; }
+    .header .login-btn:hover { background: var(--accent-hover); }
+    .theme-toggle { background: var(--bg-accent); border: none; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; font-size: 1.1em; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+    .theme-toggle:hover { background: var(--border); }
     .container { max-width: 600px; margin: 0 auto; padding: 60px 20px; }
     .page-header { margin-bottom: 40px; }
-    .page-header h2 { font-size: 1.5em; font-weight: 600; margin-bottom: 8px; color: #1f2937; }
-    .page-header .version { color: #94a3b8; font-size: 0.9em; }
-    .card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
-    .card.notice { border: 1px solid #d1e9f0; background: #f0f9fc; }
-    .card h3 { margin-bottom: 12px; font-size: 1em; font-weight: 500; color: #374151; }
-    .card p { color: #64748b; font-size: 0.9em; margin-bottom: 12px; }
-    .card a { color: #5BB4D4; text-decoration: none; }
+    .page-header h2 { font-size: 1.5em; font-weight: 600; margin-bottom: 8px; color: var(--text-primary); }
+    .page-header .version { color: var(--text-subtle); font-size: 0.9em; }
+    .card { background: var(--bg-secondary); border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px var(--shadow); }
+    .card.notice { border: 1px solid var(--border-light); background: var(--bg-section); }
+    .card h3 { margin-bottom: 12px; font-size: 1em; font-weight: 500; color: var(--text-secondary); }
+    .card p { color: var(--text-muted); font-size: 0.9em; margin-bottom: 12px; }
+    .card a { color: var(--accent); text-decoration: none; }
     .card a:hover { text-decoration: underline; }
-    .install-btn { display: block; width: 100%; padding: 14px; background: #5BB4D4; color: white; border: none; border-radius: 8px; font-size: 1em; font-weight: 500; cursor: pointer; text-decoration: none; text-align: center; transition: all 0.2s; }
-    .install-btn:hover { background: #4AABCC; }
+    .install-btn { display: block; width: 100%; padding: 14px; background: var(--accent); color: white; border: none; border-radius: 8px; font-size: 1em; font-weight: 500; cursor: pointer; text-decoration: none; text-align: center; transition: all 0.2s; }
+    .install-btn:hover { background: var(--accent-hover); }
     .install-btn span { font-size: 0.85em; font-weight: 400; opacity: 0.8; display: block; margin-top: 4px; }
-    .manual-link { text-align: center; color: #94a3b8; margin-top: 12px; font-size: 0.9em; }
+    .manual-link { text-align: center; color: var(--text-subtle); margin-top: 12px; font-size: 0.9em; }
     .support-list { list-style: none; }
-    .support-list li { padding: 10px 0; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; gap: 10px; font-size: 0.9em; color: #64748b; }
+    .support-list li { padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; font-size: 0.9em; color: var(--text-muted); }
     .support-list li:last-child { border-bottom: none; }
-    .support-list .status { width: 8px; height: 8px; background: #5BB4D4; border-radius: 50%; }
-    .support-list .pending { background: #cbd5e1; }
-    .changelog { color: #64748b; font-size: 0.9em; list-style: none; }
+    .support-list .status { width: 8px; height: 8px; background: var(--accent); border-radius: 50%; }
+    .support-list .pending { background: var(--text-subtle); }
+    .changelog { color: var(--text-muted); font-size: 0.9em; list-style: none; }
     .changelog li { margin-bottom: 8px; }
-    .changelog strong { color: #374151; }
-    .footer { background: white; padding: 24px 20px; text-align: center; color: #94a3b8; font-size: 0.85em; margin-top: 60px; border-top: 1px solid #e2e8f0; }
+    .changelog strong { color: var(--text-secondary); }
+    .footer { background: var(--bg-secondary); padding: 24px 20px; text-align: center; color: var(--text-subtle); font-size: 0.85em; margin-top: 60px; border-top: 1px solid var(--border); }
     .footer-links { margin-bottom: 12px; }
-    .footer-links a { color: #64748b; text-decoration: none; margin: 0 12px; }
-    .footer-links a:hover { color: #5BB4D4; }
+    .footer-links a { color: var(--text-muted); text-decoration: none; margin: 0 12px; }
+    .footer-links a:hover { color: var(--accent); }
     @media (max-width: 640px) { .header nav { display: none; } }
   </style>
 </head>
@@ -2747,7 +2798,10 @@ function downloadPage() {
       <a href="/lurl/pricing">方案</a>
       <a href="/lurl/guide" class="active">教學</a>
     </nav>
-    <a href="/lurl/member/login" class="login-btn">登入</a>
+    <div class="header-right">
+      <button class="theme-toggle" onclick="toggleTheme()" title="切換主題">🌙</button>
+      <a href="/lurl/member/login" class="login-btn">登入</a>
+    </div>
   </header>
 
   <main class="container">
@@ -2801,6 +2855,24 @@ function downloadPage() {
     </div>
     <div>© 2026 Lurl</div>
   </footer>
+  <script>
+    function toggleTheme() {
+      const html = document.documentElement;
+      const isDark = html.getAttribute('data-theme') === 'dark';
+      html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+      localStorage.setItem('lurl-theme', isDark ? 'light' : 'dark');
+      document.querySelector('.theme-toggle').textContent = isDark ? '🌙' : '☀️';
+    }
+    (function() {
+      const saved = localStorage.getItem('lurl-theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const theme = saved || (prefersDark ? 'dark' : 'light');
+      if (theme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        document.querySelector('.theme-toggle').textContent = '☀️';
+      }
+    })();
+  </script>
 </body>
 </html>`;
 }
@@ -2816,53 +2888,68 @@ function pricingPage() {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>方案 - Lurl</title>
   <style>
+    :root {
+      --bg-primary: #f8fafc; --bg-secondary: #ffffff; --bg-accent: #e8f4f8; --bg-section: #f0f9fc;
+      --text-primary: #1f2937; --text-secondary: #374151; --text-muted: #64748b; --text-subtle: #94a3b8;
+      --accent: #5BB4D4; --accent-hover: #4AABCC; --border: #e2e8f0; --border-light: #d1e9f0;
+      --shadow: rgba(0,0,0,0.06); --shadow-md: rgba(0,0,0,0.08); --btn-bg: #f1f5f9; --btn-bg-hover: #e2e8f0;
+    }
+    [data-theme="dark"] {
+      --bg-primary: #0f172a; --bg-secondary: #1e293b; --bg-accent: #1e3a5a; --bg-section: #111827;
+      --text-primary: #f1f5f9; --text-secondary: #e2e8f0; --text-muted: #94a3b8; --text-subtle: #64748b;
+      --accent: #5BB4D4; --accent-hover: #7EC8E3; --border: #334155; --border-light: #3d5a80;
+      --shadow: rgba(0,0,0,0.3); --shadow-md: rgba(0,0,0,0.4); --btn-bg: #334155; --btn-bg-hover: #475569;
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #1f2937; min-height: 100vh; line-height: 1.6; }
-    .header { background: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; line-height: 1.6; transition: background 0.3s, color 0.3s; }
+    .header { background: var(--bg-secondary); padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 3px var(--shadow-md); }
     .header .logo-title { display: flex; align-items: center; gap: 10px; }
     .header .logo { height: 36px; width: auto; }
+    .header .header-right { display: flex; align-items: center; gap: 12px; }
     .header nav { display: flex; gap: 20px; }
-    .header nav a { color: #64748b; text-decoration: none; font-size: 0.95em; transition: color 0.2s; }
-    .header nav a:hover, .header nav a.active { color: #5BB4D4; }
-    .header .login-btn { background: #5BB4D4; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 0.9em; }
-    .header .login-btn:hover { background: #4AABCC; }
+    .header nav a { color: var(--text-muted); text-decoration: none; font-size: 0.95em; transition: color 0.2s; }
+    .header nav a:hover, .header nav a.active { color: var(--accent); }
+    .header .login-btn { background: var(--accent); color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 0.9em; }
+    .header .login-btn:hover { background: var(--accent-hover); }
+    .theme-toggle { background: var(--bg-accent); border: none; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; font-size: 1.1em; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+    .theme-toggle:hover { background: var(--border); }
     .container { max-width: 900px; margin: 0 auto; padding: 60px 20px; }
     .page-header { margin-bottom: 40px; }
-    .page-header h2 { font-size: 1.5em; font-weight: 600; margin-bottom: 8px; color: #1f2937; }
-    .page-header p { color: #64748b; font-size: 0.9em; }
+    .page-header h2 { font-size: 1.5em; font-weight: 600; margin-bottom: 8px; color: var(--text-primary); }
+    .page-header p { color: var(--text-muted); font-size: 0.9em; }
     .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 40px; }
-    .plan { background: white; border-radius: 12px; padding: 24px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
-    .plan.featured { border-color: #5BB4D4; box-shadow: 0 0 0 1px #5BB4D4; }
-    .plan-name { font-size: 1em; font-weight: 500; margin-bottom: 8px; color: #374151; }
-    .plan-price { font-size: 1.8em; font-weight: 600; color: #1f2937; margin-bottom: 4px; }
-    .plan-price small { font-size: 0.5em; color: #94a3b8; }
-    .plan-quota { color: #64748b; font-size: 0.85em; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #e2e8f0; }
+    .plan { background: var(--bg-secondary); border-radius: 12px; padding: 24px; border: 1px solid var(--border); box-shadow: 0 1px 3px var(--shadow); }
+    .plan.featured { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .plan-name { font-size: 1em; font-weight: 500; margin-bottom: 8px; color: var(--text-secondary); }
+    .plan-price { font-size: 1.8em; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+    .plan-price small { font-size: 0.5em; color: var(--text-subtle); }
+    .plan-quota { color: var(--text-muted); font-size: 0.85em; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
     .plan-features { list-style: none; margin-bottom: 20px; font-size: 0.9em; }
-    .plan-features li { padding: 6px 0; color: #64748b; padding-left: 16px; position: relative; }
-    .plan-features li::before { content: ''; position: absolute; left: 0; top: 12px; width: 6px; height: 6px; background: #5BB4D4; border-radius: 50%; }
-    .plan-btn { display: block; width: 100%; padding: 10px; background: #f1f5f9; color: #64748b; border: none; border-radius: 8px; font-size: 0.9em; cursor: pointer; text-decoration: none; text-align: center; transition: all 0.2s; }
-    .plan-btn:hover { background: #e2e8f0; color: #374151; }
-    .plan.featured .plan-btn { background: #5BB4D4; color: white; }
-    .plan.featured .plan-btn:hover { background: #4AABCC; }
-    .enterprise { background: white; border-radius: 12px; padding: 24px; margin-bottom: 40px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
-    .enterprise h3 { font-size: 1.1em; font-weight: 500; margin-bottom: 8px; color: #374151; }
-    .enterprise .price { color: #1f2937; font-size: 1.3em; font-weight: 600; margin-bottom: 16px; }
-    .enterprise ul { list-style: none; color: #64748b; margin-bottom: 16px; font-size: 0.9em; }
+    .plan-features li { padding: 6px 0; color: var(--text-muted); padding-left: 16px; position: relative; }
+    .plan-features li::before { content: ''; position: absolute; left: 0; top: 12px; width: 6px; height: 6px; background: var(--accent); border-radius: 50%; }
+    .plan-btn { display: block; width: 100%; padding: 10px; background: var(--btn-bg); color: var(--text-muted); border: none; border-radius: 8px; font-size: 0.9em; cursor: pointer; text-decoration: none; text-align: center; transition: all 0.2s; }
+    .plan-btn:hover { background: var(--btn-bg-hover); color: var(--text-secondary); }
+    .plan.featured .plan-btn { background: var(--accent); color: white; }
+    .plan.featured .plan-btn:hover { background: var(--accent-hover); }
+    .enterprise { background: var(--bg-secondary); border-radius: 12px; padding: 24px; margin-bottom: 40px; border: 1px solid var(--border); box-shadow: 0 1px 3px var(--shadow); }
+    .enterprise h3 { font-size: 1.1em; font-weight: 500; margin-bottom: 8px; color: var(--text-secondary); }
+    .enterprise .price { color: var(--text-primary); font-size: 1.3em; font-weight: 600; margin-bottom: 16px; }
+    .enterprise ul { list-style: none; color: var(--text-muted); margin-bottom: 16px; font-size: 0.9em; }
     .enterprise li { padding: 6px 0; padding-left: 16px; position: relative; }
-    .enterprise li::before { content: ''; position: absolute; left: 0; top: 12px; width: 6px; height: 6px; background: #5BB4D4; border-radius: 50%; }
-    .enterprise .target { color: #94a3b8; font-size: 0.85em; margin-bottom: 16px; }
-    .enterprise .contact-btn { display: inline-block; padding: 10px 20px; background: #f1f5f9; color: #64748b; border-radius: 8px; text-decoration: none; font-size: 0.9em; }
-    .enterprise .contact-btn:hover { background: #e2e8f0; color: #374151; }
-    .faq { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
-    .faq h3 { font-size: 1.1em; font-weight: 500; margin-bottom: 20px; color: #374151; }
+    .enterprise li::before { content: ''; position: absolute; left: 0; top: 12px; width: 6px; height: 6px; background: var(--accent); border-radius: 50%; }
+    .enterprise .target { color: var(--text-subtle); font-size: 0.85em; margin-bottom: 16px; }
+    .enterprise .contact-btn { display: inline-block; padding: 10px 20px; background: var(--btn-bg); color: var(--text-muted); border-radius: 8px; text-decoration: none; font-size: 0.9em; }
+    .enterprise .contact-btn:hover { background: var(--btn-bg-hover); color: var(--text-secondary); }
+    .faq { background: var(--bg-secondary); border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px var(--shadow); }
+    .faq h3 { font-size: 1.1em; font-weight: 500; margin-bottom: 20px; color: var(--text-secondary); }
     .faq-item { margin-bottom: 16px; }
     .faq-item:last-child { margin-bottom: 0; }
-    .faq-q { font-weight: 500; margin-bottom: 4px; font-size: 0.95em; color: #374151; }
-    .faq-a { color: #64748b; font-size: 0.9em; }
-    .footer { background: white; padding: 24px 20px; text-align: center; color: #94a3b8; font-size: 0.85em; margin-top: 60px; border-top: 1px solid #e2e8f0; }
+    .faq-q { font-weight: 500; margin-bottom: 4px; font-size: 0.95em; color: var(--text-secondary); }
+    .faq-a { color: var(--text-muted); font-size: 0.9em; }
+    .footer { background: var(--bg-secondary); padding: 24px 20px; text-align: center; color: var(--text-subtle); font-size: 0.85em; margin-top: 60px; border-top: 1px solid var(--border); }
     .footer-links { margin-bottom: 12px; }
-    .footer-links a { color: #64748b; text-decoration: none; margin: 0 12px; }
-    .footer-links a:hover { color: #5BB4D4; }
+    .footer-links a { color: var(--text-muted); text-decoration: none; margin: 0 12px; }
+    .footer-links a:hover { color: var(--accent); }
     @media (max-width: 640px) { .header nav { display: none; } .plan-price { font-size: 1.5em; } }
   </style>
 </head>
@@ -2874,7 +2961,10 @@ function pricingPage() {
       <a href="/lurl/pricing" class="active">方案</a>
       <a href="/lurl/guide">教學</a>
     </nav>
-    <a href="/lurl/member/login" class="login-btn">登入</a>
+    <div class="header-right">
+      <button class="theme-toggle" onclick="toggleTheme()" title="切換主題">🌙</button>
+      <a href="/lurl/member/login" class="login-btn">登入</a>
+    </div>
   </header>
 
   <main class="container">
@@ -2970,6 +3060,24 @@ function pricingPage() {
     </div>
     <div>© 2026 Lurl</div>
   </footer>
+  <script>
+    function toggleTheme() {
+      const html = document.documentElement;
+      const isDark = html.getAttribute('data-theme') === 'dark';
+      html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+      localStorage.setItem('lurl-theme', isDark ? 'light' : 'dark');
+      document.querySelector('.theme-toggle').textContent = isDark ? '🌙' : '☀️';
+    }
+    (function() {
+      const saved = localStorage.getItem('lurl-theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const theme = saved || (prefersDark ? 'dark' : 'light');
+      if (theme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        document.querySelector('.theme-toggle').textContent = '☀️';
+      }
+    })();
+  </script>
 </body>
 </html>`;
 }
@@ -2985,44 +3093,59 @@ function guidePage() {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>使用教學 - Lurl</title>
   <style>
+    :root {
+      --bg-primary: #f8fafc; --bg-secondary: #ffffff; --bg-accent: #e8f4f8; --bg-section: #f0f9fc;
+      --text-primary: #1f2937; --text-secondary: #374151; --text-muted: #64748b; --text-subtle: #94a3b8;
+      --accent: #5BB4D4; --accent-hover: #4AABCC; --border: #e2e8f0; --border-light: #d1e9f0;
+      --shadow: rgba(0,0,0,0.06); --shadow-md: rgba(0,0,0,0.08); --btn-bg: #f1f5f9; --btn-bg-hover: #e2e8f0;
+    }
+    [data-theme="dark"] {
+      --bg-primary: #0f172a; --bg-secondary: #1e293b; --bg-accent: #1e3a5a; --bg-section: #111827;
+      --text-primary: #f1f5f9; --text-secondary: #e2e8f0; --text-muted: #94a3b8; --text-subtle: #64748b;
+      --accent: #5BB4D4; --accent-hover: #7EC8E3; --border: #334155; --border-light: #3d5a80;
+      --shadow: rgba(0,0,0,0.3); --shadow-md: rgba(0,0,0,0.4); --btn-bg: #334155; --btn-bg-hover: #475569;
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #1f2937; min-height: 100vh; line-height: 1.6; }
-    .header { background: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; line-height: 1.6; transition: background 0.3s, color 0.3s; }
+    .header { background: var(--bg-secondary); padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 3px var(--shadow-md); }
     .header .logo-title { display: flex; align-items: center; gap: 10px; }
     .header .logo { height: 36px; width: auto; }
+    .header .header-right { display: flex; align-items: center; gap: 12px; }
     .header nav { display: flex; gap: 20px; }
-    .header nav a { color: #64748b; text-decoration: none; font-size: 0.95em; transition: color 0.2s; }
-    .header nav a:hover, .header nav a.active { color: #5BB4D4; }
-    .header .login-btn { background: #5BB4D4; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 0.9em; }
-    .header .login-btn:hover { background: #4AABCC; }
+    .header nav a { color: var(--text-muted); text-decoration: none; font-size: 0.95em; transition: color 0.2s; }
+    .header nav a:hover, .header nav a.active { color: var(--accent); }
+    .header .login-btn { background: var(--accent); color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 0.9em; }
+    .header .login-btn:hover { background: var(--accent-hover); }
+    .theme-toggle { background: var(--bg-accent); border: none; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; font-size: 1.1em; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+    .theme-toggle:hover { background: var(--border); }
     .container { max-width: 600px; margin: 0 auto; padding: 60px 20px; }
     .page-header { margin-bottom: 40px; }
-    .page-header h2 { font-size: 1.5em; font-weight: 600; color: #1f2937; }
-    .step-section { background: white; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
-    .step-section h3 { font-size: 1em; font-weight: 500; margin-bottom: 12px; color: #374151; }
-    .step-section p { color: #64748b; font-size: 0.9em; margin-bottom: 12px; }
-    .step-section a { color: #5BB4D4; text-decoration: none; }
+    .page-header h2 { font-size: 1.5em; font-weight: 600; color: var(--text-primary); }
+    .step-section { background: var(--bg-secondary); border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px var(--shadow); }
+    .step-section h3 { font-size: 1em; font-weight: 500; margin-bottom: 12px; color: var(--text-secondary); }
+    .step-section p { color: var(--text-muted); font-size: 0.9em; margin-bottom: 12px; }
+    .step-section a { color: var(--accent); text-decoration: none; }
     .step-section a:hover { text-decoration: underline; }
     .browser-links { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
-    .browser-links a { padding: 8px 12px; background: #f1f5f9; border-radius: 6px; color: #64748b; text-decoration: none; font-size: 0.85em; }
-    .browser-links a:hover { background: #e2e8f0; color: #374151; }
-    .features { background: white; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
-    .features h3 { font-size: 1em; font-weight: 500; margin-bottom: 16px; color: #374151; }
-    .features ul { list-style: none; color: #64748b; font-size: 0.9em; }
+    .browser-links a { padding: 8px 12px; background: var(--btn-bg); border-radius: 6px; color: var(--text-muted); text-decoration: none; font-size: 0.85em; }
+    .browser-links a:hover { background: var(--btn-bg-hover); color: var(--text-secondary); }
+    .features { background: var(--bg-secondary); border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px var(--shadow); }
+    .features h3 { font-size: 1em; font-weight: 500; margin-bottom: 16px; color: var(--text-secondary); }
+    .features ul { list-style: none; color: var(--text-muted); font-size: 0.9em; }
     .features li { padding: 6px 0; padding-left: 16px; position: relative; }
-    .features li::before { content: ''; position: absolute; left: 0; top: 12px; width: 6px; height: 6px; background: #5BB4D4; border-radius: 50%; }
-    .trouble { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
-    .trouble h3 { font-size: 1em; font-weight: 500; margin-bottom: 16px; color: #374151; }
-    .trouble-item { padding: 10px 0; border-bottom: 1px solid #e2e8f0; }
+    .features li::before { content: ''; position: absolute; left: 0; top: 12px; width: 6px; height: 6px; background: var(--accent); border-radius: 50%; }
+    .trouble { background: var(--bg-secondary); border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px var(--shadow); }
+    .trouble h3 { font-size: 1em; font-weight: 500; margin-bottom: 16px; color: var(--text-secondary); }
+    .trouble-item { padding: 10px 0; border-bottom: 1px solid var(--border); }
     .trouble-item:last-child { border-bottom: none; }
-    .trouble-q { color: #374151; font-size: 0.9em; margin-bottom: 4px; }
-    .trouble-a { color: #64748b; font-size: 0.85em; }
-    .trouble-a a { color: #5BB4D4; text-decoration: none; }
+    .trouble-q { color: var(--text-secondary); font-size: 0.9em; margin-bottom: 4px; }
+    .trouble-a { color: var(--text-muted); font-size: 0.85em; }
+    .trouble-a a { color: var(--accent); text-decoration: none; }
     .trouble-a a:hover { text-decoration: underline; }
-    .footer { background: white; padding: 24px 20px; text-align: center; color: #94a3b8; font-size: 0.85em; margin-top: 60px; border-top: 1px solid #e2e8f0; }
+    .footer { background: var(--bg-secondary); padding: 24px 20px; text-align: center; color: var(--text-subtle); font-size: 0.85em; margin-top: 60px; border-top: 1px solid var(--border); }
     .footer-links { margin-bottom: 12px; }
-    .footer-links a { color: #64748b; text-decoration: none; margin: 0 12px; }
-    .footer-links a:hover { color: #5BB4D4; }
+    .footer-links a { color: var(--text-muted); text-decoration: none; margin: 0 12px; }
+    .footer-links a:hover { color: var(--accent); }
     @media (max-width: 640px) { .header nav { display: none; } }
   </style>
 </head>
@@ -3034,7 +3157,10 @@ function guidePage() {
       <a href="/lurl/pricing">方案</a>
       <a href="/lurl/guide" class="active">教學</a>
     </nav>
-    <a href="/lurl/member/login" class="login-btn">登入</a>
+    <div class="header-right">
+      <button class="theme-toggle" onclick="toggleTheme()" title="切換主題">🌙</button>
+      <a href="/lurl/member/login" class="login-btn">登入</a>
+    </div>
   </header>
 
   <main class="container">
@@ -3097,6 +3223,24 @@ function guidePage() {
     </div>
     <div>© 2026 Lurl</div>
   </footer>
+  <script>
+    function toggleTheme() {
+      const html = document.documentElement;
+      const isDark = html.getAttribute('data-theme') === 'dark';
+      html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+      localStorage.setItem('lurl-theme', isDark ? 'light' : 'dark');
+      document.querySelector('.theme-toggle').textContent = isDark ? '🌙' : '☀️';
+    }
+    (function() {
+      const saved = localStorage.getItem('lurl-theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const theme = saved || (prefersDark ? 'dark' : 'light');
+      if (theme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        document.querySelector('.theme-toggle').textContent = '☀️';
+      }
+    })();
+  </script>
 </body>
 </html>`;
 }
@@ -3112,40 +3256,55 @@ function feedbackPage() {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>意見回饋 - Lurl</title>
   <style>
+    :root {
+      --bg-primary: #f8fafc; --bg-secondary: #ffffff; --bg-accent: #e8f4f8; --bg-section: #f0f9fc;
+      --text-primary: #1f2937; --text-secondary: #374151; --text-muted: #64748b; --text-subtle: #94a3b8;
+      --accent: #5BB4D4; --accent-hover: #4AABCC; --border: #e2e8f0; --border-light: #d1e9f0;
+      --shadow: rgba(0,0,0,0.06); --shadow-md: rgba(0,0,0,0.08); --btn-disabled: #cbd5e1;
+    }
+    [data-theme="dark"] {
+      --bg-primary: #0f172a; --bg-secondary: #1e293b; --bg-accent: #1e3a5a; --bg-section: #111827;
+      --text-primary: #f1f5f9; --text-secondary: #e2e8f0; --text-muted: #94a3b8; --text-subtle: #64748b;
+      --accent: #5BB4D4; --accent-hover: #7EC8E3; --border: #334155; --border-light: #3d5a80;
+      --shadow: rgba(0,0,0,0.3); --shadow-md: rgba(0,0,0,0.4); --btn-disabled: #475569;
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #1f2937; min-height: 100vh; line-height: 1.6; }
-    .header { background: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; line-height: 1.6; transition: background 0.3s, color 0.3s; }
+    .header { background: var(--bg-secondary); padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 3px var(--shadow-md); }
     .header .logo-title { display: flex; align-items: center; gap: 10px; }
     .header .logo { height: 36px; width: auto; }
+    .header .header-right { display: flex; align-items: center; gap: 12px; }
     .header nav { display: flex; gap: 20px; }
-    .header nav a { color: #64748b; text-decoration: none; font-size: 0.95em; transition: color 0.2s; }
-    .header nav a:hover, .header nav a.active { color: #5BB4D4; }
-    .header .login-btn { background: #5BB4D4; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 0.9em; }
-    .header .login-btn:hover { background: #4AABCC; }
+    .header nav a { color: var(--text-muted); text-decoration: none; font-size: 0.95em; transition: color 0.2s; }
+    .header nav a:hover, .header nav a.active { color: var(--accent); }
+    .header .login-btn { background: var(--accent); color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 0.9em; }
+    .header .login-btn:hover { background: var(--accent-hover); }
+    .theme-toggle { background: var(--bg-accent); border: none; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; font-size: 1.1em; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+    .theme-toggle:hover { background: var(--border); }
     .container { max-width: 500px; margin: 0 auto; padding: 60px 20px; }
     .page-header { margin-bottom: 30px; }
-    .page-header h2 { font-size: 1.5em; font-weight: 600; margin-bottom: 8px; color: #1f2937; }
-    .page-header p { color: #64748b; font-size: 0.9em; }
-    .form-card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+    .page-header h2 { font-size: 1.5em; font-weight: 600; margin-bottom: 8px; color: var(--text-primary); }
+    .page-header p { color: var(--text-muted); font-size: 0.9em; }
+    .form-card { background: var(--bg-secondary); border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px var(--shadow); }
     .form-group { margin-bottom: 16px; }
-    .form-group label { display: block; margin-bottom: 8px; font-size: 0.9em; color: #374151; }
+    .form-group label { display: block; margin-bottom: 8px; font-size: 0.9em; color: var(--text-secondary); }
     .form-group select, .form-group input, .form-group textarea {
       width: 100%;
       padding: 10px 12px;
-      border: 1px solid #e2e8f0;
+      border: 1px solid var(--border);
       border-radius: 8px;
-      background: #f8fafc;
-      color: #1f2937;
+      background: var(--bg-primary);
+      color: var(--text-primary);
       font-size: 0.9em;
       font-family: inherit;
     }
-    .form-group select:focus, .form-group input:focus, .form-group textarea:focus { border-color: #5BB4D4; outline: none; background: white; }
+    .form-group select:focus, .form-group input:focus, .form-group textarea:focus { border-color: var(--accent); outline: none; background: var(--bg-secondary); }
     .form-group textarea { min-height: 120px; resize: vertical; }
-    .form-group .hint { color: #94a3b8; font-size: 0.8em; margin-top: 4px; }
+    .form-group .hint { color: var(--text-subtle); font-size: 0.8em; margin-top: 4px; }
     .submit-btn {
       width: 100%;
       padding: 12px;
-      background: #5BB4D4;
+      background: var(--accent);
       color: white;
       border: none;
       border-radius: 8px;
@@ -3154,20 +3313,20 @@ function feedbackPage() {
       cursor: pointer;
       transition: all 0.2s;
     }
-    .submit-btn:hover { background: #4AABCC; }
-    .submit-btn:disabled { background: #cbd5e1; color: #94a3b8; cursor: not-allowed; }
-    .other-channels { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
-    .other-channels h3 { font-size: 1em; font-weight: 500; margin-bottom: 12px; color: #374151; }
-    .other-channels ul { list-style: none; color: #64748b; font-size: 0.9em; }
+    .submit-btn:hover { background: var(--accent-hover); }
+    .submit-btn:disabled { background: var(--btn-disabled); color: var(--text-subtle); cursor: not-allowed; }
+    .other-channels { background: var(--bg-secondary); border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px var(--shadow); }
+    .other-channels h3 { font-size: 1em; font-weight: 500; margin-bottom: 12px; color: var(--text-secondary); }
+    .other-channels ul { list-style: none; color: var(--text-muted); font-size: 0.9em; }
     .other-channels li { padding: 6px 0; padding-left: 16px; position: relative; }
-    .other-channels li::before { content: ''; position: absolute; left: 0; top: 12px; width: 6px; height: 6px; background: #5BB4D4; border-radius: 50%; }
-    .toast { position: fixed; bottom: 20px; right: 20px; background: #5BB4D4; color: white; padding: 12px 20px; border-radius: 8px; font-size: 0.9em; opacity: 0; transform: translateY(20px); transition: all 0.3s; z-index: 1000; }
+    .other-channels li::before { content: ''; position: absolute; left: 0; top: 12px; width: 6px; height: 6px; background: var(--accent); border-radius: 50%; }
+    .toast { position: fixed; bottom: 20px; right: 20px; background: var(--accent); color: white; padding: 12px 20px; border-radius: 8px; font-size: 0.9em; opacity: 0; transform: translateY(20px); transition: all 0.3s; z-index: 1000; }
     .toast.show { opacity: 1; transform: translateY(0); }
     .toast.error { background: #ef4444; }
-    .footer { background: white; padding: 24px 20px; text-align: center; color: #94a3b8; font-size: 0.85em; margin-top: 60px; border-top: 1px solid #e2e8f0; }
+    .footer { background: var(--bg-secondary); padding: 24px 20px; text-align: center; color: var(--text-subtle); font-size: 0.85em; margin-top: 60px; border-top: 1px solid var(--border); }
     .footer-links { margin-bottom: 12px; }
-    .footer-links a { color: #64748b; text-decoration: none; margin: 0 12px; }
-    .footer-links a:hover { color: #5BB4D4; }
+    .footer-links a { color: var(--text-muted); text-decoration: none; margin: 0 12px; }
+    .footer-links a:hover { color: var(--accent); }
     @media (max-width: 640px) { .header nav { display: none; } }
   </style>
 </head>
@@ -3179,7 +3338,10 @@ function feedbackPage() {
       <a href="/lurl/pricing">方案</a>
       <a href="/lurl/guide">教學</a>
     </nav>
-    <a href="/lurl/member/login" class="login-btn">登入</a>
+    <div class="header-right">
+      <button class="theme-toggle" onclick="toggleTheme()" title="切換主題">🌙</button>
+      <a href="/lurl/member/login" class="login-btn">登入</a>
+    </div>
   </header>
 
   <main class="container">
@@ -3275,6 +3437,23 @@ function feedbackPage() {
         btn.textContent = '送出';
       }
     });
+
+    function toggleTheme() {
+      const html = document.documentElement;
+      const isDark = html.getAttribute('data-theme') === 'dark';
+      html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+      localStorage.setItem('lurl-theme', isDark ? 'light' : 'dark');
+      document.querySelector('.theme-toggle').textContent = isDark ? '🌙' : '☀️';
+    }
+    (function() {
+      const saved = localStorage.getItem('lurl-theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const theme = saved || (prefersDark ? 'dark' : 'light');
+      if (theme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        document.querySelector('.theme-toggle').textContent = '☀️';
+      }
+    })();
   </script>
 </body>
 </html>`;
@@ -4586,15 +4765,35 @@ function browsePage() {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lurl 影片庫</title>
   <style>
+    :root {
+      --bg-body: #f8fafc; --bg-header: #ffffff; --bg-card: #ffffff; --bg-input: #f1f5f9;
+      --bg-button: #e2e8f0; --bg-button-hover: #cbd5e1; --bg-panel: #f0f9fc;
+      --text-primary: #1f2937; --text-secondary: #374151; --text-muted: #64748b;
+      --accent: #5BB4D4; --accent-hover: #4AABCC; --accent-pink: #ec4899;
+      --border: #e2e8f0; --shadow: rgba(0,0,0,0.08);
+      --card-thumb-bg: linear-gradient(135deg, #c7e5f0 0%, #e8f4f8 100%);
+      --card-thumb-pending: linear-gradient(135deg, #fef3c7 0%, #fef9e7 100%);
+      --card-thumb-image: linear-gradient(135deg, #e8d5f0 0%, #f3e8f8 100%);
+    }
+    [data-theme="dark"] {
+      --bg-body: #0f0f0f; --bg-header: #1a1a2e; --bg-card: #1a1a1a; --bg-input: #1a1a1a;
+      --bg-button: #333; --bg-button-hover: #444; --bg-panel: #1a1a2e;
+      --text-primary: #ffffff; --text-secondary: #cccccc; --text-muted: #888888;
+      --accent: #3b82f6; --accent-hover: #2563eb; --accent-pink: #ec4899;
+      --border: #333; --shadow: rgba(0,0,0,0.3);
+      --card-thumb-bg: linear-gradient(135deg, #1e3a5f 0%, #0f1a2e 100%);
+      --card-thumb-pending: linear-gradient(135deg, #3d2a1a 0%, #1a1a1a 100%);
+      --card-thumb-image: linear-gradient(135deg, #2d1a3d 0%, #1a1a2e 100%);
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: white; min-height: 100vh; }
-    .header { background: #1a1a2e; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg-body); color: var(--text-primary); min-height: 100vh; transition: background 0.3s, color 0.3s; }
+    .header { background: var(--bg-header); color: var(--text-primary); padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; box-shadow: 0 1px 3px var(--shadow); }
     .header .logo-title { display: flex; align-items: center; gap: 10px; }
     .header .logo { height: 36px; width: auto; }
     .header h1 { font-size: 1.3em; }
     .header nav { display: flex; gap: 20px; }
-    .header nav a { color: #aaa; text-decoration: none; font-size: 0.95em; }
-    .header nav a:hover, .header nav a.active { color: white; }
+    .header nav a { color: var(--text-muted); text-decoration: none; font-size: 0.95em; }
+    .header nav a:hover, .header nav a.active { color: var(--accent); }
     .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
 
     /* Search Bar */
@@ -4603,44 +4802,44 @@ function browsePage() {
       width: 100%;
       max-width: 500px;
       padding: 12px 16px;
-      border: none;
+      border: 1px solid var(--border);
       border-radius: 8px;
-      background: #1a1a1a;
-      color: white;
+      background: var(--bg-input);
+      color: var(--text-primary);
       font-size: 1em;
       outline: none;
     }
-    .search-bar input::placeholder { color: #666; }
-    .search-bar input:focus { box-shadow: 0 0 0 2px #3b82f6; }
+    .search-bar input::placeholder { color: var(--text-muted); }
+    .search-bar input:focus { box-shadow: 0 0 0 2px var(--accent); border-color: var(--accent); }
 
     /* Filter Bar */
     .filter-bar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
     .tabs { display: flex; gap: 10px; }
-    .tab { padding: 8px 16px; background: #333; border: none; border-radius: 20px; color: white; cursor: pointer; transition: all 0.2s; }
-    .tab:hover { background: #444; }
-    .tab.active { background: #3b82f6; color: #fff; }
-    .result-count { margin-left: auto; color: #888; font-size: 1.1em; font-weight: 500; }
+    .tab { padding: 8px 16px; background: var(--bg-button); border: none; border-radius: 20px; color: var(--text-secondary); cursor: pointer; transition: all 0.2s; }
+    .tab:hover { background: var(--bg-button-hover); }
+    .tab.active { background: var(--accent); color: #fff; }
+    .result-count { margin-left: auto; color: var(--text-muted); font-size: 1.1em; font-weight: 500; }
 
     /* Pagination */
     .pagination { display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 30px; flex-wrap: wrap; }
-    .pagination button { min-width: 40px; height: 40px; border: none; border-radius: 8px; background: #252525; color: #888; cursor: pointer; font-size: 14px; transition: all 0.2s; }
-    .pagination button:hover:not(:disabled) { background: #333; color: #fff; }
-    .pagination button.active { background: #3b82f6; color: #fff; }
+    .pagination button { min-width: 40px; height: 40px; border: none; border-radius: 8px; background: var(--bg-button); color: var(--text-muted); cursor: pointer; font-size: 14px; transition: all 0.2s; }
+    .pagination button:hover:not(:disabled) { background: var(--bg-button-hover); color: var(--text-primary); }
+    .pagination button.active { background: var(--accent); color: #fff; }
     .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
     .pagination button.nav-btn { padding: 0 12px; }
     .pagination button .nav-text { display: inline; }
     .pagination button .nav-icon { display: none; }
-    .pagination .page-info { color: #666; font-size: 14px; margin: 0 10px; }
+    .pagination .page-info { color: var(--text-muted); font-size: 14px; margin: 0 10px; }
 
     /* Grid */
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
-    .card { background: #1a1a1a; border-radius: 12px; overflow: hidden; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
-    .card:hover { transform: translateY(-4px); box-shadow: 0 8px 25px rgba(0,0,0,0.3); }
+    .card { background: var(--bg-card); border-radius: 12px; overflow: hidden; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; border: 1px solid var(--border); }
+    .card:hover { transform: translateY(-4px); box-shadow: 0 8px 25px var(--shadow); }
 
     /* Thumbnail - No video preload! */
     .card-thumb {
       aspect-ratio: 16/9;
-      background: linear-gradient(135deg, #1e3a5f 0%, #0f1a2e 100%);
+      background: var(--card-thumb-bg);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -4660,7 +4859,7 @@ function browsePage() {
       transition: all 0.2s;
       z-index: 2;
     }
-    .card:hover .card-thumb .play-icon { background: rgba(59,130,246,0.8); transform: scale(1.1); }
+    .card:hover .card-thumb .play-icon { background: rgba(91,180,212,0.8); transform: scale(1.1); }
     .card-thumb .play-icon::after {
       content: '';
       width: 0;
@@ -4670,8 +4869,8 @@ function browsePage() {
       border-bottom: 11px solid transparent;
       margin-left: 4px;
     }
-    .card-thumb.pending { background: linear-gradient(135deg, #3d2a1a 0%, #1a1a1a 100%); }
-    .card-thumb.image { background: linear-gradient(135deg, #2d1a3d 0%, #1a1a2e 100%); }
+    .card-thumb.pending { background: var(--card-thumb-pending); }
+    .card-thumb.image { background: var(--card-thumb-image); }
     .card-thumb img {
       width: 100%; height: 100%; object-fit: cover;
       filter: blur(20px); opacity: 0;
@@ -4683,22 +4882,22 @@ function browsePage() {
 
     /* Card Info */
     .card-info { padding: 12px; }
-    .card-title { font-size: 0.95em; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 8px; }
+    .card-title { font-size: 0.95em; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 8px; color: var(--text-primary); }
     .card-meta { display: flex; justify-content: space-between; align-items: center; }
-    .card-date { font-size: 0.8em; color: #666; }
+    .card-date { font-size: 0.8em; color: var(--text-muted); }
     .card-id {
       font-size: 0.75em;
-      color: #3b82f6;
-      background: rgba(59,130,246,0.1);
+      color: var(--accent);
+      background: rgba(91,180,212,0.1);
       padding: 2px 8px;
       border-radius: 4px;
       cursor: pointer;
       transition: all 0.2s;
     }
-    .card-id:hover { background: rgba(59,130,246,0.3); }
+    .card-id:hover { background: rgba(91,180,212,0.3); }
     .card-status { font-size: 0.75em; color: #f59e0b; margin-top: 4px; }
 
-    .empty { text-align: center; padding: 60px; color: #666; }
+    .empty { text-align: center; padding: 60px; color: var(--text-muted); }
 
     /* Skeleton Loading */
     @keyframes shimmer {
@@ -4706,11 +4905,11 @@ function browsePage() {
       100% { background-position: 200% 0; }
     }
     .skeleton {
-      background: linear-gradient(90deg, #1a1a1a 25%, #2a2a2a 50%, #1a1a1a 75%);
+      background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-button) 50%, var(--bg-card) 75%);
       background-size: 200% 100%;
       animation: shimmer 1.5s infinite;
     }
-    .skeleton-card { background: #1a1a1a; border-radius: 12px; overflow: hidden; }
+    .skeleton-card { background: var(--bg-card); border-radius: 12px; overflow: hidden; }
     .skeleton-thumb { aspect-ratio: 16/9; }
     .skeleton-info { padding: 12px; }
     .skeleton-title { height: 20px; border-radius: 4px; margin-bottom: 12px; width: 80%; }
@@ -4721,8 +4920,8 @@ function browsePage() {
       position: fixed;
       bottom: 20px;
       right: 20px;
-      background: #333;
-      color: white;
+      background: var(--bg-button-hover);
+      color: var(--text-primary);
       padding: 12px 20px;
       border-radius: 8px;
       opacity: 0;
@@ -4734,7 +4933,7 @@ function browsePage() {
     /* Header Actions */
     .header-actions { display: flex; gap: 8px; margin-left: auto; margin-right: 20px; }
     .header-actions button {
-      background: rgba(255,255,255,0.1);
+      background: var(--bg-button);
       border: none;
       padding: 8px 12px;
       border-radius: 8px;
@@ -4742,28 +4941,29 @@ function browsePage() {
       cursor: pointer;
       transition: all 0.2s;
     }
-    .header-actions button:hover { background: rgba(255,255,255,0.2); }
+    .header-actions button:hover { background: var(--bg-button-hover); }
     .mute-btn.muted { background: #c62828; }
+    .theme-toggle { font-size: 1.1em !important; }
 
     /* Redeem Panel */
     .redeem-panel {
       display: none;
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      background: var(--bg-panel);
       padding: 20px;
-      border-bottom: 1px solid #333;
+      border-bottom: 1px solid var(--border);
     }
     .redeem-panel.show { display: block; }
     .redeem-content { max-width: 400px; margin: 0 auto; text-align: center; }
-    .redeem-content h3 { color: #fff; margin-bottom: 8px; }
-    .redeem-desc { color: #888; font-size: 0.9em; margin-bottom: 16px; }
+    .redeem-content h3 { color: var(--text-primary); margin-bottom: 8px; }
+    .redeem-desc { color: var(--text-muted); font-size: 0.9em; margin-bottom: 16px; }
     .redeem-input-group { display: flex; gap: 8px; }
     .redeem-input-group input {
       flex: 1;
       padding: 12px 16px;
-      border: 2px solid #333;
+      border: 2px solid var(--border);
       border-radius: 8px;
-      background: #0f0f0f;
-      color: white;
+      background: var(--bg-input);
+      color: var(--text-primary);
       font-size: 1.1em;
       font-family: monospace;
       letter-spacing: 2px;
@@ -4793,12 +4993,12 @@ function browsePage() {
       border: none;
       border-radius: 4px;
       cursor: pointer;
-      background: #333;
-      color: #aaa;
+      background: var(--bg-button);
+      color: var(--text-muted);
       font-size: 0.9em;
       transition: all 0.2s;
     }
-    .card-actions button:hover { background: #444; color: white; }
+    .card-actions button:hover { background: var(--bg-button-hover); color: var(--text-primary); }
     .card-actions .btn-like.active { background: #4caf50; color: white; }
     .card-actions .btn-dislike.active { background: #f44336; color: white; }
     .card-actions .btn-block:hover { background: #c62828; color: white; }
@@ -4812,29 +5012,29 @@ function browsePage() {
       border-radius: 12px;
       font-size: 0.75em;
       cursor: pointer;
-      background: #2a2a2a;
-      color: #888;
-      border: 1px solid #333;
+      background: var(--bg-button);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
       transition: all 0.2s;
     }
-    .card-tags .tag:hover { background: #333; color: #ccc; border-color: #444; }
-    .card-tags .tag.active { background: #ec4899; color: white; border-color: #ec4899; }
+    .card-tags .tag:hover { background: var(--bg-button-hover); color: var(--text-secondary); border-color: var(--border); }
+    .card-tags .tag.active { background: var(--accent-pink); color: white; border-color: var(--accent-pink); }
 
     .tag-group { display: inline-flex; align-items: center; position: relative; }
     .tag-expand {
       font-size: 0.6em;
       cursor: pointer;
       padding: 2px 4px;
-      color: #888;
+      color: var(--text-muted);
       margin-left: -4px;
     }
-    .tag-expand:hover { color: #ec4899; }
+    .tag-expand:hover { color: var(--accent-pink); }
     .tag-popover {
       position: absolute;
       top: 100%;
       left: 0;
-      background: #1a1a1a;
-      border: 1px solid #333;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
       border-radius: 8px;
       padding: 8px;
       z-index: 100;
@@ -4842,12 +5042,12 @@ function browsePage() {
       flex-wrap: wrap;
       gap: 4px;
       min-width: 120px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      box-shadow: 0 4px 12px var(--shadow);
     }
     .tag-popover .tag.sub {
       font-size: 0.75em;
       padding: 4px 8px;
-      background: #2a2a2a;
+      background: var(--bg-button);
     }
     .tag-popover .tag.sub.active { background: #be185d; border-color: #be185d; }
 
@@ -4858,8 +5058,9 @@ function browsePage() {
       gap: 8px;
       margin-bottom: 16px;
       padding: 12px;
-      background: #1a1a1a;
+      background: var(--bg-card);
       border-radius: 8px;
+      border: 1px solid var(--border);
     }
     .tag-filter .filter-group {
       display: inline-flex;
@@ -4871,19 +5072,19 @@ function browsePage() {
       border-radius: 16px;
       font-size: 0.85em;
       cursor: pointer;
-      background: #2a2a2a;
-      color: #888;
-      border: 1px solid #333;
+      background: var(--bg-button);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
       transition: all 0.2s;
     }
-    .tag-filter .filter-tag:hover { background: #333; color: #ccc; }
-    .tag-filter .filter-tag.active { background: #ec4899; color: white; border-color: #ec4899; }
+    .tag-filter .filter-tag:hover { background: var(--bg-button-hover); color: var(--text-secondary); }
+    .tag-filter .filter-tag.active { background: var(--accent-pink); color: white; border-color: var(--accent-pink); }
     .tag-filter .filter-popover {
       position: absolute;
       top: 100%;
       left: 0;
-      background: #1a1a1a;
-      border: 1px solid #333;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
       border-radius: 8px;
       padding: 8px;
       z-index: 100;
@@ -4891,29 +5092,29 @@ function browsePage() {
       flex-wrap: wrap;
       gap: 6px;
       min-width: 140px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      box-shadow: 0 4px 12px var(--shadow);
     }
     .tag-filter .filter-sub {
       padding: 6px 12px;
       font-size: 0.8em;
-      background: #2a2a2a;
-      border: 1px solid #333;
+      background: var(--bg-button);
+      border: 1px solid var(--border);
       border-radius: 16px;
       cursor: pointer;
-      color: #888;
+      color: var(--text-muted);
     }
-    .tag-filter .filter-sub:hover { background: #333; }
+    .tag-filter .filter-sub:hover { background: var(--bg-button-hover); }
     .tag-filter .filter-sub.active { background: #be185d; border-color: #be185d; color: white; }
     .tag-filter .clear-filter {
       padding: 6px 12px;
-      background: #333;
-      color: #888;
+      background: var(--bg-button);
+      color: var(--text-muted);
       border: none;
       border-radius: 16px;
       cursor: pointer;
       font-size: 0.85em;
     }
-    .tag-filter .clear-filter:hover { background: #444; color: #fff; }
+    .tag-filter .clear-filter:hover { background: var(--bg-button-hover); color: var(--text-primary); }
 
     /* ===== RWD 響應式設計 ===== */
 
@@ -4991,6 +5192,7 @@ function browsePage() {
       <img src="/lurl/files/LOGO.png" alt="Lurl" class="logo">
     </a>
     <div class="header-actions">
+      <button class="theme-toggle" onclick="toggleTheme()" title="切換主題">🌙</button>
       <button id="muteToggle" class="mute-btn" onclick="toggleGlobalMute()" title="靜音模式">🔊</button>
       <button class="redeem-btn" onclick="toggleRedeemPanel()" title="兌換序號">🎁</button>
     </div>
@@ -5062,6 +5264,23 @@ function browsePage() {
       return id;
     }
 
+    // ===== 主題切換 =====
+    function toggleTheme() {
+      const html = document.documentElement;
+      const isDark = html.getAttribute('data-theme') === 'dark';
+      html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+      localStorage.setItem('lurl-theme', isDark ? 'light' : 'dark');
+      document.querySelector('.theme-toggle').textContent = isDark ? '🌙' : '☀️';
+    }
+
+    function initTheme() {
+      const saved = localStorage.getItem('lurl-theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const theme = saved || (prefersDark ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', theme);
+      document.querySelector('.theme-toggle').textContent = theme === 'dark' ? '☀️' : '🌙';
+    }
+
     // ===== 靜音模式 =====
     let globalMuted = localStorage.getItem('lurl_muted') === 'true';
 
@@ -5105,6 +5324,7 @@ function browsePage() {
           if (e.key === 'Enter') submitRedeem();
         });
       }
+      initTheme();
       initMuteState();
     });
 
@@ -5715,15 +5935,32 @@ function viewPage(record, fileExists) {
   <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css">
   <title>${title} - Lurl</title>
   <style>
+    :root {
+      --bg-body: #f8fafc; --bg-header: #ffffff; --bg-card: #ffffff; --bg-input: #f1f5f9;
+      --bg-button: #e2e8f0; --bg-button-hover: #cbd5e1; --bg-media: #1a1a1a;
+      --text-primary: #1f2937; --text-secondary: #374151; --text-muted: #64748b;
+      --accent: #5BB4D4; --accent-hover: #4AABCC; --accent-pink: #ec4899;
+      --border: #e2e8f0; --shadow: rgba(0,0,0,0.08);
+    }
+    [data-theme="dark"] {
+      --bg-body: #0f0f0f; --bg-header: #1a1a2e; --bg-card: #1a1a1a; --bg-input: #1a1a1a;
+      --bg-button: #333; --bg-button-hover: #444; --bg-media: #000;
+      --text-primary: #ffffff; --text-secondary: #cccccc; --text-muted: #888888;
+      --accent: #3b82f6; --accent-hover: #2563eb; --accent-pink: #ec4899;
+      --border: #333; --shadow: rgba(0,0,0,0.3);
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: white; min-height: 100vh; }
-    .header { background: #1a1a2e; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg-body); color: var(--text-primary); min-height: 100vh; transition: background 0.3s, color 0.3s; }
+    .header { background: var(--bg-header); color: var(--text-primary); padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 3px var(--shadow); }
     .header .logo-title { display: flex; align-items: center; gap: 10px; }
     .header .logo { height: 36px; width: auto; }
     .header h1 { font-size: 1.3em; }
+    .header .header-right { display: flex; align-items: center; gap: 12px; }
     .header nav { display: flex; gap: 20px; }
-    .header nav a { color: #aaa; text-decoration: none; font-size: 0.95em; }
-    .header nav a:hover { color: white; }
+    .header nav a { color: var(--text-muted); text-decoration: none; font-size: 0.95em; }
+    .header nav a:hover { color: var(--accent); }
+    .theme-toggle { background: var(--bg-button); border: none; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; font-size: 1.1em; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+    .theme-toggle:hover { background: var(--bg-button-hover); }
     .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
     .media-container { background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 20px; position: relative; min-height: 200px; }
     .media-container video { width: 100%; max-height: 70vh; object-fit: contain; display: block; aspect-ratio: 16/9; background: #000; }
@@ -5762,41 +5999,41 @@ function viewPage(record, fileExists) {
     .plyr--video { border-radius: 12px; }
     .plyr__controls { background: linear-gradient(transparent, rgba(0,0,0,0.8)); }
     .plyr__control:hover { background: #3b82f6; }
-    .media-missing { color: #666; text-align: center; padding: 40px; }
+    .media-missing { color: var(--text-muted); text-align: center; padding: 40px; }
     .media-missing p { margin-bottom: 15px; }
-    .info { background: #1a1a1a; border-radius: 12px; padding: 20px; }
-    .info h2 { font-size: 1.3em; margin-bottom: 15px; line-height: 1.4; }
-    .info-row { display: flex; gap: 10px; margin-bottom: 10px; color: #aaa; font-size: 0.9em; }
-    .info-row span { color: #666; }
+    .info { background: var(--bg-card); border-radius: 12px; padding: 20px; border: 1px solid var(--border); }
+    .info h2 { font-size: 1.3em; margin-bottom: 15px; line-height: 1.4; color: var(--text-primary); }
+    .info-row { display: flex; gap: 10px; margin-bottom: 10px; color: var(--text-secondary); font-size: 0.9em; }
+    .info-row span { color: var(--text-muted); }
     .actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
     .btn { padding: 10px 20px; border-radius: 8px; text-decoration: none; font-size: 0.95em; border: none; cursor: pointer; }
-    .btn-primary { background: #2196F3; color: white; }
-    .btn-secondary { background: #333; color: white; }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-secondary { background: var(--bg-button); color: var(--text-secondary); }
     .btn-warning { background: #f59e0b; color: white; }
     .btn:hover { opacity: 0.9; }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .back-link { display: inline-block; margin-bottom: 20px; color: #aaa; text-decoration: none; }
-    .back-link:hover { color: white; }
+    .back-link { display: inline-block; margin-bottom: 20px; color: var(--text-muted); text-decoration: none; }
+    .back-link:hover { color: var(--accent); }
     .status { margin-top: 10px; font-size: 0.9em; }
     .status.success { color: #4ade80; }
     .status.error { color: #f87171; }
 
     /* Tags */
     .tags-section { display: flex; align-items: center; gap: 10px; margin: 15px 0; flex-wrap: wrap; }
-    .tags-label { color: #666; font-size: 0.9em; }
+    .tags-label { color: var(--text-muted); font-size: 0.9em; }
     .tags { display: flex; flex-wrap: wrap; gap: 8px; }
     .tag {
       padding: 6px 14px;
       border-radius: 16px;
       font-size: 0.85em;
       cursor: pointer;
-      background: #2a2a2a;
-      color: #888;
-      border: 1px solid #333;
+      background: var(--bg-button);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
       transition: all 0.2s;
     }
-    .tag:hover { background: #333; color: #ccc; border-color: #444; }
-    .tag.active { background: #ec4899; color: white; border-color: #ec4899; }
+    .tag:hover { background: var(--bg-button-hover); color: var(--text-secondary); border-color: var(--border); }
+    .tag.active { background: var(--accent-pink); color: white; border-color: var(--accent-pink); }
     .tag-group { display: inline-flex; align-items: center; position: relative; }
     .tag-popover {
       position: absolute;
@@ -5876,13 +6113,17 @@ function viewPage(record, fileExists) {
 </head>
 <body>
   <div class="header">
-    <div class="logo-title">
+    <a href="/lurl/" class="logo-title">
       <img src="/lurl/files/LOGO.png" alt="Lurl" class="logo">
-    </div>
+    </a>
     <nav>
-      <a href="/lurl/admin">管理</a>
+      <a href="/lurl/">首頁</a>
       <a href="/lurl/browse">瀏覽</a>
+      <a href="/lurl/pricing">方案</a>
     </nav>
+    <div class="header-right">
+      <button class="theme-toggle" onclick="toggleTheme()" title="切換主題">🌙</button>
+    </div>
   </div>
   <div class="container">
     <a href="javascript:history.back()" class="back-link">← 返回影片庫</a>
@@ -6133,6 +6374,22 @@ function viewPage(record, fileExists) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ recordId, progress: 0 })
       }).catch(() => {});  // 忽略錯誤（未登入時會失敗）
+    })();
+
+    // 主題切換
+    function toggleTheme() {
+      const html = document.documentElement;
+      const isDark = html.getAttribute('data-theme') === 'dark';
+      html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+      localStorage.setItem('lurl-theme', isDark ? 'light' : 'dark');
+      document.querySelector('.theme-toggle').textContent = isDark ? '🌙' : '☀️';
+    }
+    (function() {
+      const saved = localStorage.getItem('lurl-theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const theme = saved || (prefersDark ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', theme);
+      document.querySelector('.theme-toggle').textContent = theme === 'dark' ? '☀️' : '🌙';
     })();
   </script>
 </body>
