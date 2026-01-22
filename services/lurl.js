@@ -4470,9 +4470,38 @@ function viewPage(record, fileExists) {
     .header nav a { color: #aaa; text-decoration: none; font-size: 0.95em; }
     .header nav a:hover { color: white; }
     .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
-    .media-container { background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 20px; }
+    .media-container { background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 20px; position: relative; min-height: 200px; }
     .media-container video { width: 100%; max-height: 70vh; object-fit: contain; display: block; aspect-ratio: 16/9; background: #000; }
-    .media-container img { width: 100%; max-height: 70vh; object-fit: contain; display: block; }
+    .media-container img { width: 100%; max-height: 70vh; object-fit: contain; display: block; opacity: 0; transition: opacity 0.3s; }
+    .media-container img.loaded { opacity: 1; }
+    /* Image Skeleton */
+    .img-skeleton {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: linear-gradient(90deg, #1a1a1a 25%, #2a2a2a 50%, #1a1a1a 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .img-skeleton.hidden { display: none; }
+    .img-skeleton::after {
+      content: '';
+      width: 60px;
+      height: 60px;
+      border: 3px solid #333;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
     /* Plyr Dark Theme */
     .plyr { --plyr-color-main: #3b82f6; }
     .plyr--video { border-radius: 12px; }
@@ -4606,7 +4635,8 @@ function viewPage(record, fileExists) {
       ${fileExists
         ? (isVideo
           ? `<video id="player" playsinline controls></video>`
-          : `<img src="/lurl/files/${record.backupPath}" alt="${title}">`)
+          : `<div class="img-skeleton" id="imgSkeleton"></div>
+             <img src="/lurl/files/${record.backupPath}" alt="${title}" onload="this.classList.add('loaded'); document.getElementById('imgSkeleton').classList.add('hidden');">`)
         : `<div class="media-missing">
             <p>⚠️ 檔案尚未下載成功</p>
             <p style="font-size:0.8em;color:#555;">原始位置：${record.fileUrl}</p>
