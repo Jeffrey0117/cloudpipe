@@ -3689,6 +3689,134 @@ function memberRegisterPage(error = '') {
 </html>`;
 }
 
+// ==================== Member Quota Page ====================
+
+function memberQuotaPage(user) {
+  const tierNames = { free: '免費仔', basic: '會員', premium: '老司機' };
+  const tierQuotas = { free: 3, basic: 30, premium: -1 };
+  const tierName = tierNames[user.tier] || '免費仔';
+  const monthlyQuota = tierQuotas[user.tier] || 3;
+  const isUnlimited = user.tier === 'premium';
+
+  return `<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <link rel="icon" type="image/png" href="/lurl/files/LOGO.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>我的額度 - Lurl</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: white; min-height: 100vh; }
+    .header { background: #1a1a2e; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+    .header .logo { height: 36px; width: auto; }
+    .header nav { display: flex; gap: 20px; align-items: center; }
+    .header nav a { color: #aaa; text-decoration: none; font-size: 0.95em; }
+    .header nav a:hover { color: white; }
+    .header .user-info { display: flex; align-items: center; gap: 12px; }
+    .header .user-info .nickname { color: #4ade80; font-weight: 500; }
+    .header .logout-btn { color: #888; font-size: 0.85em; cursor: pointer; }
+    .header .logout-btn:hover { color: #ef4444; }
+    .container { max-width: 800px; margin: 0 auto; padding: 40px 20px; }
+    .page-header { margin-bottom: 40px; }
+    .page-header h2 { font-size: 1.8em; margin-bottom: 8px; }
+    .page-header p { color: #888; }
+    .quota-card { background: linear-gradient(135deg, #1a2e1a 0%, #1a1a1a 100%); border: 2px solid #4ade80; border-radius: 16px; padding: 40px; text-align: center; margin-bottom: 30px; }
+    .quota-card .tier-badge { display: inline-block; background: #4ade80; color: #000; padding: 6px 16px; border-radius: 20px; font-weight: 600; margin-bottom: 20px; }
+    .quota-card .quota-display { font-size: 4em; font-weight: 700; color: #4ade80; margin-bottom: 10px; }
+    .quota-card .quota-label { color: #888; font-size: 1.1em; }
+    .quota-card .unlimited { font-size: 2em; color: #4ade80; }
+    .info-card { background: #1a1a1a; border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+    .info-card h3 { margin-bottom: 16px; font-size: 1.2em; }
+    .info-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #333; }
+    .info-row:last-child { border-bottom: none; }
+    .info-row .label { color: #888; }
+    .info-row .value { font-weight: 500; }
+    .upgrade-section { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-radius: 12px; padding: 30px; text-align: center; }
+    .upgrade-section h3 { margin-bottom: 12px; }
+    .upgrade-section p { color: #888; margin-bottom: 20px; }
+    .upgrade-btn { display: inline-block; background: #3b82f6; color: white; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: 500; }
+    .upgrade-btn:hover { background: #2563eb; }
+    .back-link { display: inline-block; margin-bottom: 20px; color: #888; text-decoration: none; }
+    .back-link:hover { color: white; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <a href="/lurl/"><img src="/lurl/files/LOGO.png" alt="Lurl" class="logo"></a>
+    <nav>
+      <a href="/lurl/browse">瀏覽</a>
+      <a href="/lurl/member/quota" style="color:white;">額度</a>
+      <div class="user-info">
+        <span class="nickname">${user.nickname || user.email.split('@')[0]}</span>
+        <span class="logout-btn" onclick="logout()">登出</span>
+      </div>
+    </nav>
+  </header>
+
+  <main class="container">
+    <a href="/lurl/browse" class="back-link">← 返回瀏覽</a>
+
+    <div class="page-header">
+      <h2>💰 我的額度</h2>
+      <p>查看你的會員狀態和剩餘額度</p>
+    </div>
+
+    <div class="quota-card">
+      <div class="tier-badge">${tierName}</div>
+      ${isUnlimited
+        ? `<div class="unlimited">∞ 無限</div>
+           <div class="quota-label">全資料庫完整存取</div>`
+        : `<div class="quota-display">${user.quotaBalance}</div>
+           <div class="quota-label">剩餘額度（每月 ${monthlyQuota} 點）</div>`
+      }
+    </div>
+
+    <div class="info-card">
+      <h3>📋 帳號資訊</h3>
+      <div class="info-row">
+        <span class="label">Email</span>
+        <span class="value">${user.email}</span>
+      </div>
+      <div class="info-row">
+        <span class="label">暱稱</span>
+        <span class="value">${user.nickname || '-'}</span>
+      </div>
+      <div class="info-row">
+        <span class="label">會員等級</span>
+        <span class="value">${tierName}</span>
+      </div>
+      <div class="info-row">
+        <span class="label">加入時間</span>
+        <span class="value">${new Date(user.createdAt).toLocaleDateString('zh-TW')}</span>
+      </div>
+      ${user.tierExpiry ? `
+      <div class="info-row">
+        <span class="label">會員到期</span>
+        <span class="value">${new Date(user.tierExpiry).toLocaleDateString('zh-TW')}</span>
+      </div>
+      ` : ''}
+    </div>
+
+    ${user.tier !== 'premium' ? `
+    <div class="upgrade-section">
+      <h3>🚀 升級會員</h3>
+      <p>升級後可享有更多額度和完整存取權限</p>
+      <a href="/lurl/pricing" class="upgrade-btn">查看方案</a>
+    </div>
+    ` : ''}
+  </main>
+
+  <script>
+    async function logout() {
+      await fetch('/lurl/api/auth/logout', { method: 'POST' });
+      window.location.href = '/lurl/';
+    }
+  </script>
+</body>
+</html>`;
+}
+
 function browsePage() {
   return `<!DOCTYPE html>
 <html lang="zh-TW">
@@ -5497,6 +5625,80 @@ module.exports = {
           tierExpiry: user.tierExpiry,
           quotaBalance: user.quotaBalance
         }
+      }));
+      return;
+    }
+
+    // GET /member/quota - 會員額度頁面
+    if (req.method === 'GET' && urlPath === '/member/quota') {
+      const user = getMemberFromRequest(req);
+      if (!user) {
+        res.writeHead(302, { 'Location': '/lurl/member/login?redirect=/lurl/member/quota' });
+        res.end();
+        return;
+      }
+      sendCompressed(req, res, 200, corsHeaders('text/html; charset=utf-8'), memberQuotaPage(user));
+      return;
+    }
+
+    // GET /api/member/quota - 取得會員額度資訊
+    if (req.method === 'GET' && urlPath === '/api/member/quota') {
+      const user = getMemberFromRequest(req);
+      if (!user) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '未登入' }));
+        return;
+      }
+
+      // 計算額度資訊
+      const tierQuotas = { free: 3, basic: 30, premium: -1 }; // -1 = 無限
+      const monthlyQuota = tierQuotas[user.tier] || 3;
+      const isUnlimited = user.tier === 'premium';
+
+      res.writeHead(200, corsHeaders());
+      res.end(JSON.stringify({
+        ok: true,
+        quota: {
+          balance: user.quotaBalance,
+          monthlyQuota,
+          tier: user.tier,
+          tierExpiry: user.tierExpiry,
+          isUnlimited
+        }
+      }));
+      return;
+    }
+
+    // POST /api/member/use-quota - 消耗會員額度
+    if (req.method === 'POST' && urlPath === '/api/member/use-quota') {
+      const user = getMemberFromRequest(req);
+      if (!user) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '未登入' }));
+        return;
+      }
+
+      // 進階會員不需要消耗額度
+      if (user.tier === 'premium') {
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ ok: true, unlimited: true }));
+        return;
+      }
+
+      // 檢查額度
+      if (user.quotaBalance <= 0) {
+        res.writeHead(403, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '額度不足' }));
+        return;
+      }
+
+      // 消耗額度
+      lurlDb.updateUser(user.id, { quotaBalance: user.quotaBalance - 1 });
+
+      res.writeHead(200, corsHeaders());
+      res.end(JSON.stringify({
+        ok: true,
+        remaining: user.quotaBalance - 1
       }));
       return;
     }
