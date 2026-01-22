@@ -4987,17 +4987,18 @@ function browsePage() {
 </head>
 <body>
   <div class="header">
-    <div class="logo-title">
+    <a href="/lurl/" class="logo-title">
       <img src="/lurl/files/LOGO.png" alt="Lurl" class="logo">
-      <h1>影片庫</h1>
-    </div>
+    </a>
     <div class="header-actions">
       <button id="muteToggle" class="mute-btn" onclick="toggleGlobalMute()" title="靜音模式">🔊</button>
       <button class="redeem-btn" onclick="toggleRedeemPanel()" title="兌換序號">🎁</button>
     </div>
     <nav>
-      <a href="/lurl/admin">Admin</a>
-      <a href="/lurl/browse" class="active">Browse</a>
+      <a href="/lurl/">首頁</a>
+      <a href="/lurl/browse" class="active">瀏覽</a>
+      <a href="/lurl/pricing">方案</a>
+      <a href="/lurl/guide">教學</a>
     </nav>
   </div>
   <!-- 序號兌換面板 -->
