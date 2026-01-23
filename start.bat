@@ -7,8 +7,8 @@ echo   CloudPipe - Local Deploy Gateway
 echo   ================================
 echo.
 
-echo [1/2] Starting server...
-start /B node index.js
+echo [1/2] Starting server with PM2...
+pm2 start index.js --name cloudpipe --watch --ignore-watch="data node_modules logs"
 
 timeout /t 2 /nobreak >nul
 
