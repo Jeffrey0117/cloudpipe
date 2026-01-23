@@ -5337,6 +5337,7 @@ function browsePage() {
     <nav>
       <a href="/lurl/">首頁</a>
       <a href="/lurl/browse" class="active">瀏覽</a>
+      <a href="/lurl/member/collections">⭐ 收藏</a>
       <a href="/lurl/admin">管理</a>
     </nav>
   </div>
@@ -6443,6 +6444,7 @@ function viewPage(record, fileExists, user = null) {
     <nav>
       <a href="/lurl/">首頁</a>
       <a href="/lurl/browse">瀏覽</a>
+      <a href="/lurl/member/collections">⭐ 收藏</a>
       <a href="/lurl/admin">管理</a>
     </nav>
     <div class="header-right">
@@ -7500,7 +7502,11 @@ module.exports = {
 
     // GET /member/collections - 收藏列表頁面
     if (req.method === 'GET' && urlPath === '/member/collections') {
-      const user = getMemberFromRequest(req);
+      let user = getMemberFromRequest(req);
+      // 支援 admin 登入
+      if (!user && isAdminAuthenticated(req)) {
+        user = { id: 'admin', tier: 'admin', nickname: '管理員' };
+      }
       if (!user) {
         res.writeHead(302, { 'Location': '/lurl/member/login?redirect=/lurl/member/collections' });
         res.end();
@@ -7512,7 +7518,10 @@ module.exports = {
 
     // GET /member/collections/:id - 收藏夾詳情頁面
     if (req.method === 'GET' && urlPath.startsWith('/member/collections/') && !urlPath.includes('/api/')) {
-      const user = getMemberFromRequest(req);
+      let user = getMemberFromRequest(req);
+      if (!user && isAdminAuthenticated(req)) {
+        user = { id: 'admin', tier: 'admin', nickname: '管理員' };
+      }
       if (!user) {
         res.writeHead(302, { 'Location': '/lurl/member/login?redirect=/lurl' + urlPath });
         res.end();
