@@ -5167,22 +5167,26 @@ function browsePage() {
 
     .tag-group { display: inline-flex; align-items: center; position: relative; }
     .tag-expand {
-      font-size: 0.6em;
+      font-size: 0.7em;
       cursor: pointer;
-      padding: 2px 4px;
+      padding: 2px 6px;
       color: var(--text-muted);
-      margin-left: -4px;
+      margin-left: 2px;
+      border-radius: 4px;
+      background: var(--bg-button);
+      border: 1px solid var(--border);
     }
-    .tag-expand:hover { color: var(--accent-pink); }
+    .tag-expand:hover { color: var(--accent-pink); background: var(--bg-button-hover); }
+    .card-tags { position: relative; z-index: 1; }
     .tag-popover {
       position: absolute;
-      top: 100%;
+      top: calc(100% + 4px);
       left: 0;
       background: var(--bg-card);
       border: 1px solid var(--border);
       border-radius: 8px;
       padding: 8px;
-      z-index: 100;
+      z-index: 9999;
       display: flex;
       flex-wrap: wrap;
       gap: 4px;
@@ -5398,6 +5402,32 @@ function browsePage() {
     let selectedFilterTags = [];  // 篩選用的標籤
     let expandedFilterTag = null; // 展開的篩選主標籤
 
+    // ===== 滾動位置記憶 =====
+    const SCROLL_KEY = 'lurl_browse_scroll';
+
+    function saveScrollPosition() {
+      sessionStorage.setItem(SCROLL_KEY, JSON.stringify({
+        scrollY: window.scrollY,
+        page: currentPage,
+        type: currentType
+      }));
+    }
+
+    function restoreScrollPosition() {
+      try {
+        const saved = JSON.parse(sessionStorage.getItem(SCROLL_KEY) || '{}');
+        // 只有在同一個 tab 和頁碼才恢復滾動位置
+        if (saved.type === currentType && saved.page === currentPage && saved.scrollY) {
+          setTimeout(() => window.scrollTo(0, saved.scrollY), 100);
+        }
+      } catch (e) {}
+    }
+
+    function navigateToView(recordId) {
+      saveScrollPosition();
+      window.location.href = '/lurl/view/' + recordId;
+    }
+
     // ===== 訪客 ID =====
     function getVisitorId() {
       let id = localStorage.getItem('lurl_visitor_id');
@@ -5575,6 +5605,22 @@ function browsePage() {
 
     // 使用事件委派處理 tag 點擊（Browse 頁面）
     document.addEventListener('click', (e) => {
+      // 處理 tag-expand 點擊（展開按鈕）
+      const expandEl = e.target.closest('.card-tags .tag-expand');
+      if (expandEl) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const recordId = expandEl.dataset.record;
+        const tag = expandEl.dataset.tag;
+        if (recordId && tag) {
+          const key = recordId + ':' + tag;
+          expandedTagSelector = (expandedTagSelector === key) ? null : key;
+          renderGrid();
+        }
+        return;
+      }
+
       // 處理 tag 點擊
       const tagEl = e.target.closest('.card-tags .tag');
       if (tagEl) {
@@ -5585,11 +5631,7 @@ function browsePage() {
         const recordId = tagEl.dataset.record;
         const tag = tagEl.dataset.tag;
 
-        if (action === 'popover' && recordId && tag) {
-          const key = recordId + ':' + tag;
-          expandedTagSelector = (expandedTagSelector === key) ? null : key;
-          renderGrid();
-        } else if (action === 'toggle' && recordId && tag) {
+        if (action === 'toggle' && recordId && tag) {
           toggleTag(recordId, tag);
         }
         return;
@@ -5605,16 +5647,19 @@ function browsePage() {
     function renderTagSelector(record) {
       const tags = record.tags || [];
       return MAIN_TAGS.map(mainTag => {
-        const isActive = hasMainTag(tags, mainTag);
+        const isMainActive = tags.includes(mainTag);  // 母標籤本身是否被選
         const subTags = TAG_TREE[mainTag];
         const hasSubTags = subTags.length > 0;
         const isExpanded = expandedTagSelector === record.id + ':' + mainTag;
 
         let html = \`<span class="tag-group" data-group="\${record.id}:\${mainTag}">\`;
 
+        // 母標籤：點擊直接切換
+        html += \`<span class="tag \${isMainActive ? 'active' : ''}" data-action="toggle" data-record="\${record.id}" data-tag="\${mainTag}">\${mainTag}</span>\`;
+
         if (hasSubTags) {
-          // 有子標籤：點擊彈出 popover
-          html += \`<span class="tag \${isActive ? 'active' : ''}" data-action="popover" data-record="\${record.id}" data-tag="\${mainTag}">\${mainTag} ▾</span>\`;
+          // 展開按鈕
+          html += \`<span class="tag-expand" data-action="popover" data-record="\${record.id}" data-tag="\${mainTag}">▾</span>\`;
 
           if (isExpanded) {
             html += \`<div class="tag-popover">\`;
@@ -5625,9 +5670,6 @@ function browsePage() {
             }).join('');
             html += \`</div>\`;
           }
-        } else {
-          // 沒有子標籤：直接切換
-          html += \`<span class="tag \${isActive ? 'active' : ''}" data-action="toggle" data-record="\${record.id}" data-tag="\${mainTag}">\${mainTag}</span>\`;
         }
 
         html += \`</span>\`;
@@ -5711,6 +5753,8 @@ function browsePage() {
       loadRecords();
     }
 
+    let shouldRestoreScroll = true;  // 初次載入時嘗試恢復滾動位置
+
     async function loadRecords() {
       if (isLoading) return;
       showSkeleton();
@@ -5734,7 +5778,13 @@ function browsePage() {
 
       renderGrid();
       renderPagination();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      if (shouldRestoreScroll) {
+        shouldRestoreScroll = false;
+        restoreScrollPosition();
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
     }
 
     function goToPage(page) {
@@ -5796,7 +5846,7 @@ function browsePage() {
       const getTitle = (t) => (!t || t === 'untitled' || t === 'undefined') ? 'Untitled' : t;
 
       const html = allRecords.map(r => \`
-        <div class="card \${r.blocked ? 'blocked' : ''}" data-record-id="\${r.id}" data-hls-ready="\${r.hlsReady || false}" data-preview-ready="\${r.previewReady || false}" data-preview-path="\${r.previewPath || ''}" data-type="\${r.type}" onclick="window.location.href='/lurl/view/\${r.id}'">
+        <div class="card \${r.blocked ? 'blocked' : ''}" data-record-id="\${r.id}" data-hls-ready="\${r.hlsReady || false}" data-preview-ready="\${r.previewReady || false}" data-preview-path="\${r.previewPath || ''}" data-type="\${r.type}" onclick="navigateToView('\${r.id}')">
           <div class="card-thumb \${r.type === 'image' ? 'image' : ''} \${!r.fileExists ? 'pending' : ''}">
             \${r.fileExists
               ? (r.type === 'image'
@@ -6251,27 +6301,38 @@ function viewPage(record, fileExists) {
     .tag:hover { background: var(--bg-button-hover); color: var(--text-secondary); border-color: var(--border); }
     .tag.active { background: var(--accent-pink); color: white; border-color: var(--accent-pink); }
     .tag-group { display: inline-flex; align-items: center; position: relative; }
+    .tag-expand {
+      font-size: 0.7em;
+      cursor: pointer;
+      padding: 2px 6px;
+      color: var(--text-muted);
+      margin-left: 2px;
+      border-radius: 4px;
+      background: var(--bg-button);
+      border: 1px solid var(--border);
+    }
+    .tag-expand:hover { color: var(--accent-pink); background: var(--bg-button-hover); }
     .tag-popover {
       position: absolute;
-      top: 100%;
+      top: calc(100% + 4px);
       left: 0;
-      background: #1a1a1a;
-      border: 1px solid #333;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
       border-radius: 8px;
       padding: 8px;
-      z-index: 100;
+      z-index: 9999;
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
       min-width: 140px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      box-shadow: 0 4px 12px var(--shadow);
     }
     .tag-popover .tag.sub {
       font-size: 0.8em;
       padding: 6px 12px;
-      background: #2a2a2a;
+      background: var(--bg-button);
     }
-    .tag-popover .tag.sub.active { background: #be185d; border-color: #be185d; }
+    .tag-popover .tag.sub.active { background: var(--accent-pink); border-color: var(--accent-pink); }
 
     /* Toast */
     .toast {
@@ -6412,15 +6473,19 @@ function viewPage(record, fileExists) {
       let html = '';
 
       MAIN_TAGS.forEach(mainTag => {
-        const isActive = hasMainTag(currentTags, mainTag);
+        const isMainActive = currentTags.includes(mainTag);  // 母標籤本身是否被選
         const subTags = TAG_TREE[mainTag];
         const hasSubTags = subTags.length > 0;
         const isExpanded = expandedTag === mainTag;
 
         html += '<span class="tag-group">';
 
+        // 母標籤：點擊直接切換
+        html += '<span class="tag ' + (isMainActive ? 'active' : '') + '" data-action="toggle" data-tag="' + mainTag + '">' + mainTag + '</span>';
+
         if (hasSubTags) {
-          html += '<span class="tag ' + (isActive ? 'active' : '') + '" data-action="popover" data-tag="' + mainTag + '">' + mainTag + ' ▾</span>';
+          // 展開按鈕
+          html += '<span class="tag-expand" data-action="popover" data-tag="' + mainTag + '">▾</span>';
 
           if (isExpanded) {
             html += '<div class="tag-popover">';
@@ -6431,8 +6496,6 @@ function viewPage(record, fileExists) {
             });
             html += '</div>';
           }
-        } else {
-          html += '<span class="tag ' + (isActive ? 'active' : '') + '" data-action="toggle" data-tag="' + mainTag + '">' + mainTag + '</span>';
         }
 
         html += '</span>';
@@ -6443,6 +6506,20 @@ function viewPage(record, fileExists) {
 
     // 使用事件委派處理 tag 點擊
     document.getElementById('tags').addEventListener('click', function(e) {
+      // 處理展開按鈕點擊
+      const expandEl = e.target.closest('.tag-expand');
+      if (expandEl) {
+        e.preventDefault();
+        e.stopPropagation();
+        const tag = expandEl.dataset.tag;
+        if (tag) {
+          expandedTag = (expandedTag === tag) ? null : tag;
+          renderTags();
+        }
+        return;
+      }
+
+      // 處理 tag 點擊
       const target = e.target.closest('.tag');
       if (!target) return;
 
@@ -6452,10 +6529,7 @@ function viewPage(record, fileExists) {
       const action = target.dataset.action;
       const tag = target.dataset.tag;
 
-      if (action === 'popover') {
-        expandedTag = (expandedTag === tag) ? null : tag;
-        renderTags();
-      } else if (action === 'toggle' && tag) {
+      if (action === 'toggle' && tag) {
         toggleTag(tag);
       }
     });
