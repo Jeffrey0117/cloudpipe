@@ -6570,12 +6570,15 @@ function viewPage(record, fileExists) {
 
       // 策略：快速啟動 + HLS 背景載入 + 無縫切換
       if (hlsReady && Hls.isSupported()) {
-        // 1. 快速啟動：有 preview 用 preview，沒有就用 MP4
-        const quickStartUrl = previewUrl || mp4Url;
-        video.src = quickStartUrl;
+        // 1. 快速啟動：有 preview 用 preview，否則直接等 HLS（MP4 可能已刪除）
+        if (previewUrl) {
+          video.src = previewUrl;
+          console.log('[Player] 預覽片段快速啟動');
+        } else {
+          console.log('[Player] 無預覽，等待 HLS...');
+        }
         currentPlayer = new Plyr(video, plyrOptions);
         setupPlayer(currentPlayer);
-        console.log('[Player] 快速啟動: ' + (previewUrl ? '預覽片段' : 'MP4'));
 
         // 2. 背景載入 HLS
         hls = new Hls({
