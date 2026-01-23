@@ -125,6 +125,7 @@ const VIDEOS_DIR = path.join(DATA_DIR, 'videos');
 const IMAGES_DIR = path.join(DATA_DIR, 'images');
 const THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails');
 const HLS_DIR = path.join(DATA_DIR, 'hls');
+const PREVIEWS_DIR = path.join(DATA_DIR, 'previews');
 
 // HLS 轉檔佇列
 const hlsQueue = [];
@@ -231,9 +232,12 @@ function broadcastLog(log) {
 
 // ==================== HLS 轉檔系統 ====================
 
-// 確保 HLS 目錄存在
+// 確保 HLS 和 Previews 目錄存在
 if (!fs.existsSync(HLS_DIR)) {
   fs.mkdirSync(HLS_DIR, { recursive: true });
+}
+if (!fs.existsSync(PREVIEWS_DIR)) {
+  fs.mkdirSync(PREVIEWS_DIR, { recursive: true });
 }
 
 // HLS 畫質設定
@@ -280,6 +284,69 @@ function getVideoInfo(inputPath) {
   });
 }
 
+// 計算預覽片段長度
+function getPreviewDuration(videoDuration) {
+  if (videoDuration < 10) return 0;      // 不產生預覽（短影片）
+  if (videoDuration < 30) return 3;      // 短影片 3 秒
+  return 6;                               // 標準 6 秒
+}
+
+// 產生預覽片段 (240p, 3-6秒, ~200KB)
+function generatePreviewClip(inputPath, recordId, videoDuration) {
+  return new Promise((resolve, reject) => {
+    const previewDuration = getPreviewDuration(videoDuration);
+
+    if (previewDuration === 0) {
+      console.log(`[Preview] 跳過 ${recordId}：影片太短 (${videoDuration.toFixed(1)}s)`);
+      resolve({ skipped: true, reason: 'short_video' });
+      return;
+    }
+
+    const outputPath = path.join(PREVIEWS_DIR, `${recordId}.mp4`);
+
+    // 如果已存在則跳過
+    if (fs.existsSync(outputPath)) {
+      console.log(`[Preview] 跳過 ${recordId}：預覽已存在`);
+      resolve({ skipped: true, reason: 'exists' });
+      return;
+    }
+
+    const args = [
+      '-i', inputPath,
+      '-t', String(previewDuration),       // 前 N 秒
+      '-vf', 'scale=426:240',              // 240p
+      '-c:v', 'libx264',
+      '-profile:v', 'baseline',            // 最大相容性
+      '-preset', 'fast',
+      '-crf', '28',                         // 較高壓縮
+      '-c:a', 'aac',
+      '-b:a', '64k',                        // 低碼率音訊
+      '-movflags', '+faststart',           // 快速啟動
+      '-y',
+      outputPath
+    ];
+
+    console.log(`[Preview] 開始產生 ${recordId} (${previewDuration}s)...`);
+    const ffmpeg = spawn('ffmpeg', args, { windowsHide: true });
+
+    let stderr = '';
+    ffmpeg.stderr.on('data', data => stderr += data.toString());
+
+    ffmpeg.on('close', code => {
+      if (code !== 0) {
+        console.error(`[Preview] ${recordId} 失敗:`, stderr.slice(-300));
+        reject(new Error(`Preview generation failed: ${stderr.slice(-300)}`));
+        return;
+      }
+
+      const stats = fs.statSync(outputPath);
+      const sizeKB = Math.round(stats.size / 1024);
+      console.log(`[Preview] ${recordId} 完成 (${sizeKB}KB)`);
+      resolve({ success: true, path: `previews/${recordId}.mp4`, size: stats.size });
+    });
+  });
+}
+
 // 單一畫質 HLS 轉檔
 function transcodeToHLS(inputPath, outputDir, quality, videoInfo) {
   return new Promise((resolve, reject) => {
@@ -310,7 +377,7 @@ function transcodeToHLS(inputPath, outputDir, quality, videoInfo) {
       '-crf', String(quality.crf),
       '-c:a', 'aac',
       '-b:a', quality.audioBitrate,
-      '-hls_time', '6',
+      '-hls_time', '2',
       '-hls_list_size', '0',
       '-hls_segment_filename', segmentPattern,
       '-hls_playlist_type', 'vod',
@@ -366,7 +433,7 @@ function generateMasterPlaylist(outputDir, qualities, videoInfo) {
   return masterPath;
 }
 
-// 完整 HLS 轉檔流程
+// 完整 HLS 轉檔流程（含預覽片段產生）
 async function processHLSTranscode(recordId) {
   const records = readAllRecords();
   const record = records.find(r => r.id === recordId);
@@ -398,12 +465,41 @@ async function processHLSTranscode(recordId) {
     const videoInfo = await getVideoInfo(inputPath);
     console.log(`[HLS] 影片資訊: ${videoInfo.width}x${videoInfo.height}, ${videoInfo.duration}s`);
 
-    // 建立輸出目錄
+    // 儲存影片長度到記錄
+    updateRecord(recordId, { duration: videoInfo.duration });
+
+    // 短影片處理（<10秒）：保留 MP4，不轉 HLS
+    if (videoInfo.duration < 10) {
+      console.log(`[HLS] 短影片 ${recordId}：保留 MP4，不轉 HLS (${videoInfo.duration.toFixed(1)}s)`);
+      updateRecord(recordId, {
+        isShortVideo: true,
+        hlsReady: false,
+        previewReady: false
+      });
+      broadcastLog({ type: 'hls_complete', recordId, title: record.title, isShortVideo: true });
+      return { success: true, isShortVideo: true };
+    }
+
+    // 1. 先產生預覽片段（快速完成）
+    try {
+      const previewResult = await generatePreviewClip(inputPath, recordId, videoInfo.duration);
+      if (previewResult.success) {
+        updateRecord(recordId, {
+          previewPath: previewResult.path,
+          previewReady: true
+        });
+      }
+    } catch (e) {
+      console.error(`[Preview] ${recordId} 產生失敗:`, e.message);
+      // 預覽失敗不影響 HLS 轉檔
+    }
+
+    // 2. 建立 HLS 輸出目錄
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    // 依序轉檔各畫質（避免同時佔用太多資源）
+    // 3. 依序轉檔各畫質（避免同時佔用太多資源）
     const results = [];
     for (const quality of HLS_QUALITIES) {
       try {
@@ -415,13 +511,17 @@ async function processHLSTranscode(recordId) {
       }
     }
 
-    // 產生 master playlist
+    // 4. 產生 master playlist
     generateMasterPlaylist(outputDir, HLS_QUALITIES, videoInfo);
 
-    // 更新記錄
-    updateRecord(recordId, { hlsReady: true, hlsPath: `hls/${recordId}/master.m3u8` });
+    // 5. 更新記錄
+    updateRecord(recordId, {
+      hlsReady: true,
+      hlsPath: `hls/${recordId}/master.m3u8`,
+      isShortVideo: false
+    });
 
-    // 刪除原始檔案（HLS 轉檔成功後不再需要）
+    // 6. 刪除原始檔案（HLS 轉檔成功後不再需要，預覽已產生）
     if (fs.existsSync(inputPath)) {
       try {
         fs.unlinkSync(inputPath);
@@ -5682,7 +5782,7 @@ function browsePage() {
       const getTitle = (t) => (!t || t === 'untitled' || t === 'undefined') ? 'Untitled' : t;
 
       const html = allRecords.map(r => \`
-        <div class="card \${r.blocked ? 'blocked' : ''}" data-record-id="\${r.id}" data-hls-ready="\${r.hlsReady || false}" onclick="window.location.href='/lurl/view/\${r.id}'">
+        <div class="card \${r.blocked ? 'blocked' : ''}" data-record-id="\${r.id}" data-hls-ready="\${r.hlsReady || false}" data-preview-ready="\${r.previewReady || false}" data-preview-path="\${r.previewPath || ''}" data-type="\${r.type}" onclick="window.location.href='/lurl/view/\${r.id}'">
           <div class="card-thumb \${r.type === 'image' ? 'image' : ''} \${!r.fileExists ? 'pending' : ''}">
             \${r.fileExists
               ? (r.type === 'image'
@@ -5842,44 +5942,61 @@ function browsePage() {
         .catch(err => console.warn('[SW] 註冊失敗', err));
     }
 
-    // 預載管理器
+    // 預載管理器（含 Hover 動態預覽）
     const Preloader = {
       preloading: new Set(),
       observer: null,
+      hoverVideo: null,
+      hoverCard: null,
 
       // 初始化
       init() {
         this.setupIntersectionObserver();
-        this.setupHoverPreload();
+        this.setupHoverPreview();
       },
 
-      // 視窗內預載：進入視窗時預載 m3u8 + 第一個 segment
+      // 視窗內預載：進入視窗時預載預覽片段
       setupIntersectionObserver() {
         this.observer = new IntersectionObserver((entries) => {
           entries.forEach(entry => {
             if (entry.isIntersecting) {
               const card = entry.target;
               const recordId = card.dataset.recordId;
+              const previewReady = card.dataset.previewReady === 'true';
+              const previewPath = card.dataset.previewPath;
               const hlsReady = card.dataset.hlsReady === 'true';
+              const type = card.dataset.type;
 
-              if (hlsReady && recordId && !this.preloading.has(recordId)) {
-                this.preloadBasic(recordId);
+              if (type !== 'video' || !recordId || this.preloading.has(recordId)) return;
+
+              // 優先預載預覽片段（更小，秒開）
+              if (previewReady && previewPath) {
+                this.preloadPreview(recordId, previewPath);
+              } else if (hlsReady) {
+                this.preloadHLS(recordId);
               }
             }
           });
-        }, { rootMargin: '100px' }); // 提前 100px 開始預載
+        }, { rootMargin: '200px' }); // 提前 200px 開始預載
       },
 
-      // 基礎預載：m3u8 + 480p 第一個 segment
-      async preloadBasic(recordId) {
+      // 預載預覽片段 (~200KB)
+      preloadPreview(recordId, previewPath) {
         this.preloading.add(recordId);
+        const link = document.createElement('link');
+        link.rel = 'prefetch';
+        link.href = \`/lurl/files/\${previewPath}\`;
+        link.as = 'video';
+        document.head.appendChild(link);
+      },
 
+      // 預載 HLS（如果沒有預覽片段）
+      async preloadHLS(recordId) {
+        this.preloading.add(recordId);
         const urls = [
           \`/lurl/hls/\${recordId}/master.m3u8\`,
           \`/lurl/hls/\${recordId}/480p/playlist.m3u8\`
         ];
-
-        // 載入 480p playlist 來取得第一個 segment
         try {
           const res = await fetch(\`/lurl/hls/\${recordId}/480p/playlist.m3u8\`);
           if (res.ok) {
@@ -5890,47 +6007,88 @@ function browsePage() {
             }
           }
         } catch (e) { /* ignore */ }
-
         this.sendPreloadMessage(urls);
       },
 
-      // Hover 預載：預載更多 segments
-      setupHoverPreload() {
+      // Hover 動態預覽：滑鼠移入時播放預覽片段
+      setupHoverPreview() {
         let hoverTimer = null;
+        const grid = document.getElementById('grid');
+        if (!grid) return;
 
-        document.getElementById('grid').addEventListener('mouseover', (e) => {
+        grid.addEventListener('mouseenter', (e) => {
           const card = e.target.closest('.card');
-          if (!card) return;
+          if (!card || card === this.hoverCard) return;
 
-          const recordId = card.dataset.recordId;
-          const hlsReady = card.dataset.hlsReady === 'true';
+          // 清除之前的 hover
+          this.clearHoverVideo();
 
-          if (hlsReady && recordId) {
-            hoverTimer = setTimeout(() => {
-              this.preloadHover(recordId);
-            }, 500); // 0.5 秒後開始
+          const previewReady = card.dataset.previewReady === 'true';
+          const previewPath = card.dataset.previewPath;
+          const type = card.dataset.type;
+
+          if (type !== 'video' || !previewReady || !previewPath) return;
+
+          this.hoverCard = card;
+
+          // 延遲 300ms 開始播放（避免快速滑過）
+          hoverTimer = setTimeout(() => {
+            this.playHoverVideo(card, previewPath);
+          }, 300);
+        }, true);
+
+        grid.addEventListener('mouseleave', (e) => {
+          const card = e.target.closest('.card');
+          if (card === this.hoverCard) {
+            if (hoverTimer) {
+              clearTimeout(hoverTimer);
+              hoverTimer = null;
+            }
+            this.clearHoverVideo();
           }
-        });
-
-        document.getElementById('grid').addEventListener('mouseout', (e) => {
-          if (hoverTimer) {
-            clearTimeout(hoverTimer);
-            hoverTimer = null;
-          }
-        });
+        }, true);
       },
 
-      // Hover 預載：載入 480p 前 3 個 segments
-      async preloadHover(recordId) {
-        try {
-          const res = await fetch(\`/lurl/hls/\${recordId}/480p/playlist.m3u8\`);
-          if (res.ok) {
-            const text = await res.text();
-            const segments = text.split('\\n').filter(line => line.endsWith('.ts')).slice(0, 3);
-            const urls = segments.map(seg => \`/lurl/hls/\${recordId}/480p/\${seg}\`);
-            this.sendPreloadMessage(urls);
+      // 播放 Hover 預覽
+      playHoverVideo(card, previewPath) {
+        const thumbContainer = card.querySelector('.card-thumb');
+        if (!thumbContainer) return;
+
+        // 建立 video 元素
+        this.hoverVideo = document.createElement('video');
+        this.hoverVideo.src = \`/lurl/files/\${previewPath}\`;
+        this.hoverVideo.muted = true;
+        this.hoverVideo.loop = true;
+        this.hoverVideo.playsInline = true;
+        this.hoverVideo.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;z-index:10;';
+
+        // 隱藏原本的內容
+        const img = thumbContainer.querySelector('img');
+        const playIcon = thumbContainer.querySelector('.play-icon');
+        if (img) img.style.opacity = '0';
+        if (playIcon) playIcon.style.opacity = '0';
+
+        thumbContainer.appendChild(this.hoverVideo);
+        this.hoverVideo.play().catch(() => {});
+      },
+
+      // 清除 Hover 預覽
+      clearHoverVideo() {
+        if (this.hoverVideo) {
+          this.hoverVideo.pause();
+          this.hoverVideo.remove();
+          this.hoverVideo = null;
+        }
+        if (this.hoverCard) {
+          const thumbContainer = this.hoverCard.querySelector('.card-thumb');
+          if (thumbContainer) {
+            const img = thumbContainer.querySelector('img');
+            const playIcon = thumbContainer.querySelector('.play-icon');
+            if (img) img.style.opacity = '';
+            if (playIcon) playIcon.style.opacity = '';
           }
-        } catch (e) { /* ignore */ }
+          this.hoverCard = null;
+        }
       },
 
       // 發送預載訊息給 Service Worker
@@ -6174,7 +6332,7 @@ function viewPage(record, fileExists) {
     <div class="media-container">
       ${fileExists
         ? (isVideo
-          ? `<video id="player" playsinline controls></video>`
+          ? `<video id="player" playsinline controls poster="${record.thumbnailPath ? `/lurl/files/${record.thumbnailPath}` : ''}"></video>`
           : `<div class="img-skeleton" id="imgSkeleton"></div>
              <img src="/lurl/files/${record.backupPath}" alt="${title}" onload="this.classList.add('loaded'); document.getElementById('imgSkeleton').classList.add('hidden');">`)
         : `<div class="media-missing">
@@ -6312,8 +6470,12 @@ function viewPage(record, fileExists) {
     const hlsReady = ${record.hlsReady || false};
     const hlsUrl = '/lurl/hls/${record.id}/master.m3u8';
     const mp4Url = '/lurl/files/${record.backupPath}';
+    const previewUrl = ${record.previewReady ? `'/lurl/files/${record.previewPath}'` : 'null'};
+    const isShortVideo = ${record.isShortVideo || false};
 
     let hls = null;
+    let currentPlayer = null;
+    let hlsSwitched = false;
 
     function initPlayer() {
       const plyrOptions = {
@@ -6327,56 +6489,114 @@ function viewPage(record, fileExists) {
         storage: { enabled: true, key: 'plyr' }
       };
 
-      // HLS 模式：使用 hls.js
+      // 短影片：直接用 MP4
+      if (isShortVideo) {
+        video.src = mp4Url;
+        currentPlayer = new Plyr(video, plyrOptions);
+        setupPlayer(currentPlayer);
+        console.log('[Player] 短影片，直接播放 MP4');
+        return;
+      }
+
+      // 策略：預覽片段秒開 + HLS 背景載入 + 無縫切換
       if (hlsReady && Hls.isSupported()) {
+        // 1. 先用預覽片段秒開（如果有），否則用 MP4
+        const quickStartUrl = previewUrl || mp4Url;
+        video.src = quickStartUrl;
+        currentPlayer = new Plyr(video, plyrOptions);
+        setupPlayer(currentPlayer);
+        console.log('[Player] 快速啟動:', previewUrl ? '預覽片段' : 'MP4');
+
+        // 2. 背景載入 HLS
         hls = new Hls({
-          maxBufferLength: 30,
-          maxMaxBufferLength: 60
+          // 緩衝設定 - 最小化等待時間
+          maxBufferLength: 5,
+          maxMaxBufferLength: 15,
+          maxBufferSize: 30 * 1000 * 1000, // 30MB
+          maxBufferHole: 0.5,
+          // 快速啟動 - 從低畫質開始
+          startLevel: 0,
+          abrEwmaDefaultEstimate: 500000, // 預設 500kbps，避免選太高畫質
+          // 性能優化
+          enableWorker: true,
+          startFragPrefetch: true,
+          // 已播放部分不保留太多
+          backBufferLength: 30
         });
         hls.loadSource(hlsUrl);
-        hls.attachMedia(video);
 
+        // 3. HLS 準備好後無縫切換
         hls.on(Hls.Events.MANIFEST_PARSED, function(event, data) {
+          if (hlsSwitched) return;
+
+          // 記錄當前播放狀態
+          const currentTime = video.currentTime;
+          const wasPlaying = !video.paused;
+          const volume = video.volume;
+          const muted = video.muted;
+          const playbackRate = video.playbackRate;
+
+          console.log('[Player] HLS 準備好，切換中... (位置: ' + currentTime.toFixed(1) + 's)');
+
+          // 切換到 HLS
+          hls.attachMedia(video);
+          hlsSwitched = true;
+
           // 設定畫質選項
           const availableQualities = hls.levels.map(l => l.height);
           availableQualities.unshift(0); // 自動
 
-          plyrOptions.quality = {
-            default: 0,
-            options: availableQualities,
-            forced: true,
-            onChange: (quality) => updateQuality(quality)
+          // 銷毀舊播放器，建立新的帶畫質選擇
+          if (currentPlayer) {
+            currentPlayer.destroy();
+          }
+
+          const hlsPlyrOptions = {
+            ...plyrOptions,
+            quality: {
+              default: 0,
+              options: availableQualities,
+              forced: true,
+              onChange: (quality) => updateQuality(quality)
+            },
+            i18n: {
+              qualityLabel: { 0: '自動' }
+            }
           };
 
-          plyrOptions.i18n = {
-            qualityLabel: { 0: '自動' }
-          };
+          currentPlayer = new Plyr(video, hlsPlyrOptions);
+          setupPlayer(currentPlayer);
 
-          const player = new Plyr(video, plyrOptions);
-          setupPlayer(player);
+          // 恢復播放狀態
+          video.currentTime = currentTime;
+          video.volume = volume;
+          video.muted = muted;
+          video.playbackRate = playbackRate;
+          if (wasPlaying) {
+            video.play().catch(() => {});
+          }
+
+          console.log('[Player] 已切換到 HLS，支援多畫質');
         });
 
         hls.on(Hls.Events.ERROR, function(event, data) {
           if (data.fatal) {
-            console.error('HLS 錯誤，切換到原始檔案', data);
-            hls.destroy();
-            video.src = mp4Url;
-            const player = new Plyr(video, plyrOptions);
-            setupPlayer(player);
+            console.error('[Player] HLS 載入失敗，繼續使用快速啟動源', data);
+            // 不需要做什麼，已經在用快速啟動源了
           }
         });
       }
       // Safari 原生 HLS 支援
       else if (hlsReady && video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = hlsUrl;
-        const player = new Plyr(video, plyrOptions);
-        setupPlayer(player);
+        currentPlayer = new Plyr(video, plyrOptions);
+        setupPlayer(currentPlayer);
       }
-      // 原始 MP4
+      // 原始 MP4（無 HLS）
       else {
         video.src = mp4Url;
-        const player = new Plyr(video, plyrOptions);
-        setupPlayer(player);
+        currentPlayer = new Plyr(video, plyrOptions);
+        setupPlayer(currentPlayer);
       }
     }
 
