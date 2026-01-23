@@ -5166,17 +5166,6 @@ function browsePage() {
     .card-tags .tag.active { background: var(--accent-pink); color: white; border-color: var(--accent-pink); }
 
     .tag-group { display: inline-flex; align-items: center; position: relative; }
-    .tag-expand {
-      font-size: 0.7em;
-      cursor: pointer;
-      padding: 2px 6px;
-      color: var(--text-muted);
-      margin-left: 2px;
-      border-radius: 4px;
-      background: var(--bg-button);
-      border: 1px solid var(--border);
-    }
-    .tag-expand:hover { color: var(--accent-pink); background: var(--bg-button-hover); }
     .card-tags { position: relative; z-index: 1; }
     .tag-popover {
       position: absolute;
@@ -5605,22 +5594,6 @@ function browsePage() {
 
     // 使用事件委派處理 tag 點擊（Browse 頁面）
     document.addEventListener('click', (e) => {
-      // 處理 tag-expand 點擊（展開按鈕）
-      const expandEl = e.target.closest('.card-tags .tag-expand');
-      if (expandEl) {
-        e.preventDefault();
-        e.stopPropagation();
-
-        const recordId = expandEl.dataset.record;
-        const tag = expandEl.dataset.tag;
-        if (recordId && tag) {
-          const key = recordId + ':' + tag;
-          expandedTagSelector = (expandedTagSelector === key) ? null : key;
-          renderGrid();
-        }
-        return;
-      }
-
       // 處理 tag 點擊
       const tagEl = e.target.closest('.card-tags .tag');
       if (tagEl) {
@@ -5631,7 +5604,11 @@ function browsePage() {
         const recordId = tagEl.dataset.record;
         const tag = tagEl.dataset.tag;
 
-        if (action === 'toggle' && recordId && tag) {
+        if (action === 'popover' && recordId && tag) {
+          const key = recordId + ':' + tag;
+          expandedTagSelector = (expandedTagSelector === key) ? null : key;
+          renderGrid();
+        } else if (action === 'toggle' && recordId && tag) {
           toggleTag(recordId, tag);
         }
         return;
@@ -5647,22 +5624,23 @@ function browsePage() {
     function renderTagSelector(record) {
       const tags = record.tags || [];
       return MAIN_TAGS.map(mainTag => {
-        const isMainActive = tags.includes(mainTag);  // 母標籤本身是否被選
+        const isActive = hasMainTag(tags, mainTag);  // 該分類是否有任何標籤被選
+        const isMainActive = tags.includes(mainTag); // 母標籤本身是否被選
         const subTags = TAG_TREE[mainTag];
         const hasSubTags = subTags.length > 0;
         const isExpanded = expandedTagSelector === record.id + ':' + mainTag;
 
         let html = \`<span class="tag-group" data-group="\${record.id}:\${mainTag}">\`;
 
-        // 母標籤：點擊直接切換
-        html += \`<span class="tag \${isMainActive ? 'active' : ''}" data-action="toggle" data-record="\${record.id}" data-tag="\${mainTag}">\${mainTag}</span>\`;
-
         if (hasSubTags) {
-          // 展開按鈕
-          html += \`<span class="tag-expand" data-action="popover" data-record="\${record.id}" data-tag="\${mainTag}">▾</span>\`;
+          // 有子標籤：點擊展開 popover
+          html += \`<span class="tag \${isActive ? 'active' : ''}" data-action="popover" data-record="\${record.id}" data-tag="\${mainTag}">\${mainTag} ▾</span>\`;
 
           if (isExpanded) {
             html += \`<div class="tag-popover">\`;
+            // 母標籤本身作為第一個選項
+            html += \`<span class="tag sub \${isMainActive ? 'active' : ''}" data-action="toggle" data-record="\${record.id}" data-tag="\${mainTag}">\${mainTag}</span>\`;
+            // 子標籤
             html += subTags.map(sub => {
               const fullTag = mainTag + ':' + sub;
               const isSubActive = tags.includes(fullTag);
@@ -5670,6 +5648,9 @@ function browsePage() {
             }).join('');
             html += \`</div>\`;
           }
+        } else {
+          // 沒有子標籤：直接切換
+          html += \`<span class="tag \${isMainActive ? 'active' : ''}" data-action="toggle" data-record="\${record.id}" data-tag="\${mainTag}">\${mainTag}</span>\`;
         }
 
         html += \`</span>\`;
@@ -6301,17 +6282,6 @@ function viewPage(record, fileExists) {
     .tag:hover { background: var(--bg-button-hover); color: var(--text-secondary); border-color: var(--border); }
     .tag.active { background: var(--accent-pink); color: white; border-color: var(--accent-pink); }
     .tag-group { display: inline-flex; align-items: center; position: relative; }
-    .tag-expand {
-      font-size: 0.7em;
-      cursor: pointer;
-      padding: 2px 6px;
-      color: var(--text-muted);
-      margin-left: 2px;
-      border-radius: 4px;
-      background: var(--bg-button);
-      border: 1px solid var(--border);
-    }
-    .tag-expand:hover { color: var(--accent-pink); background: var(--bg-button-hover); }
     .tag-popover {
       position: absolute;
       top: calc(100% + 4px);
@@ -6473,22 +6443,23 @@ function viewPage(record, fileExists) {
       let html = '';
 
       MAIN_TAGS.forEach(mainTag => {
-        const isMainActive = currentTags.includes(mainTag);  // 母標籤本身是否被選
+        const isActive = hasMainTag(currentTags, mainTag);  // 該分類是否有任何標籤被選
+        const isMainActive = currentTags.includes(mainTag); // 母標籤本身是否被選
         const subTags = TAG_TREE[mainTag];
         const hasSubTags = subTags.length > 0;
         const isExpanded = expandedTag === mainTag;
 
         html += '<span class="tag-group">';
 
-        // 母標籤：點擊直接切換
-        html += '<span class="tag ' + (isMainActive ? 'active' : '') + '" data-action="toggle" data-tag="' + mainTag + '">' + mainTag + '</span>';
-
         if (hasSubTags) {
-          // 展開按鈕
-          html += '<span class="tag-expand" data-action="popover" data-tag="' + mainTag + '">▾</span>';
+          // 有子標籤：點擊展開 popover
+          html += '<span class="tag ' + (isActive ? 'active' : '') + '" data-action="popover" data-tag="' + mainTag + '">' + mainTag + ' ▾</span>';
 
           if (isExpanded) {
             html += '<div class="tag-popover">';
+            // 母標籤本身作為第一個選項
+            html += '<span class="tag sub ' + (isMainActive ? 'active' : '') + '" data-action="toggle" data-tag="' + mainTag + '">' + mainTag + '</span>';
+            // 子標籤
             subTags.forEach(sub => {
               const fullTag = mainTag + ':' + sub;
               const isSubActive = currentTags.includes(fullTag);
@@ -6496,6 +6467,9 @@ function viewPage(record, fileExists) {
             });
             html += '</div>';
           }
+        } else {
+          // 沒有子標籤：直接切換
+          html += '<span class="tag ' + (isMainActive ? 'active' : '') + '" data-action="toggle" data-tag="' + mainTag + '">' + mainTag + '</span>';
         }
 
         html += '</span>';
@@ -6506,19 +6480,6 @@ function viewPage(record, fileExists) {
 
     // 使用事件委派處理 tag 點擊
     document.getElementById('tags').addEventListener('click', function(e) {
-      // 處理展開按鈕點擊
-      const expandEl = e.target.closest('.tag-expand');
-      if (expandEl) {
-        e.preventDefault();
-        e.stopPropagation();
-        const tag = expandEl.dataset.tag;
-        if (tag) {
-          expandedTag = (expandedTag === tag) ? null : tag;
-          renderTags();
-        }
-        return;
-      }
-
       // 處理 tag 點擊
       const target = e.target.closest('.tag');
       if (!target) return;
@@ -6529,7 +6490,10 @@ function viewPage(record, fileExists) {
       const action = target.dataset.action;
       const tag = target.dataset.tag;
 
-      if (action === 'toggle' && tag) {
+      if (action === 'popover' && tag) {
+        expandedTag = (expandedTag === tag) ? null : tag;
+        renderTags();
+      } else if (action === 'toggle' && tag) {
         toggleTag(tag);
       }
     });
