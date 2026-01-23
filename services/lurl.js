@@ -7920,10 +7920,11 @@ module.exports = {
       const page = parseInt(query.page) || 1;
       const limit = parseInt(query.limit) || 50; // 預設每頁 50 筆
 
-      // 先檢查檔案存在狀態
+      // 先檢查檔案存在狀態（原始檔或 HLS 版本）
       records = records.map(r => ({
         ...r,
-        fileExists: fs.existsSync(path.join(DATA_DIR, r.backupPath))
+        fileExists: fs.existsSync(path.join(DATA_DIR, r.backupPath)) ||
+                    (r.hlsReady && fs.existsSync(path.join(HLS_DIR, r.id, 'master.m3u8')))
       }));
 
       // Blocked filter (預設不顯示封鎖的，除非明確指定)
@@ -7950,7 +7951,11 @@ module.exports = {
       } else if (type === 'blocked') {
         // 已封鎖的：只顯示 blocked=true (已被上面的 blocked filter 過濾，這裡要重新讀取)
         records = readAllRecords()
-          .map(r => ({ ...r, fileExists: fs.existsSync(path.join(DATA_DIR, r.backupPath)) }))
+          .map(r => ({
+            ...r,
+            fileExists: fs.existsSync(path.join(DATA_DIR, r.backupPath)) ||
+                        (r.hlsReady && fs.existsSync(path.join(HLS_DIR, r.id, 'master.m3u8')))
+          }))
           .filter(r => r.blocked);
       } else {
         // 全部/影片/圖片：只顯示已下載的
@@ -9346,9 +9351,12 @@ module.exports = {
         return;
       }
 
-      // 檢查本地檔案是否存在
+      // 檢查本地檔案是否存在（原始檔或 HLS 版本）
       const localFilePath = path.join(DATA_DIR, record.backupPath);
-      const fileExists = fs.existsSync(localFilePath);
+      const hlsPath = path.join(HLS_DIR, record.id, 'master.m3u8');
+      const hasOriginal = fs.existsSync(localFilePath);
+      const hasHLS = record.hlsReady && fs.existsSync(hlsPath);
+      const fileExists = hasOriginal || hasHLS;
 
       if (!fileExists) {
         res.writeHead(200, corsHeaders());
@@ -9356,7 +9364,8 @@ module.exports = {
         return;
       }
 
-      const backupUrl = `/lurl/files/${record.backupPath}`;
+      // 優先使用原始檔，否則用 HLS
+      const backupUrl = hasOriginal ? `/lurl/files/${record.backupPath}` : `/lurl/hls/${record.id}/master.m3u8`;
 
       // 檢查是否已修復過（不扣點直接給 URL）
       if (visitorId) {
@@ -9535,9 +9544,10 @@ module.exports = {
         return;
       }
 
-      // 檢查本地檔案是否存在
+      // 檢查本地檔案是否存在（原始檔或 HLS 版本）
       const localFilePath = path.join(DATA_DIR, record.backupPath);
-      const fileExists = fs.existsSync(localFilePath);
+      const hlsPath = path.join(HLS_DIR, record.id, 'master.m3u8');
+      const fileExists = fs.existsSync(localFilePath) || (record.hlsReady && fs.existsSync(hlsPath));
 
       sendCompressed(req, res, 200, corsHeaders('text/html; charset=utf-8'), viewPage(record, fileExists));
       return;
