@@ -893,8 +893,11 @@ function migrateRecordStatuses(checker, options = {}) {
 
   for (const record of records) {
     try {
-      // 如果已有狀態且不強制，跳過
-      if (!force && record.downloadStatus !== 'pending') {
+      // 如果已有有效狀態且不強制，跳過
+      // 未設定狀態（undefined/null）或 pending 狀態都需要遷移
+      const hasValidStatus = record.downloadStatus &&
+        ['completed', 'failed', 'skipped'].includes(record.downloadStatus);
+      if (!force && hasValidStatus) {
         stats.skipped++;
         continue;
       }

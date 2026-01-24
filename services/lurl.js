@@ -2971,21 +2971,33 @@ function adminPage() {
       const progressCount = document.getElementById('progressCount');
 
       if (data.currentTask) {
-        const total = data.currentTask.total || 1;
-        const processed = data.currentTask.processed || 0;
-        const percent = Math.round((processed / total) * 100);
+        // currentTask 可能是字串（策略名稱）或物件
+        if (typeof data.currentTask === 'string') {
+          // 簡單顯示策略名稱
+          progressTask.textContent = '正在執行: ' + data.currentTask;
+          progressBar.style.width = '50%';
+          progressBar.textContent = '執行中';
+          progressCount.textContent = '';
+        } else {
+          // 物件格式，顯示詳細進度
+          const total = data.currentTask.total || 1;
+          const processed = data.currentTask.processed || 0;
+          const percent = Math.round((processed / total) * 100);
 
-        progressBar.style.width = percent + '%';
-        progressBar.textContent = percent + '%';
-        progressTask.textContent = '正在處理: ' + data.currentTask.strategy + ' (' + data.currentTask.current + ')';
-        progressCount.textContent = processed + '/' + total;
+          progressBar.style.width = percent + '%';
+          progressBar.textContent = percent + '%';
+          progressTask.textContent = '正在處理: ' + (data.currentTask.strategy || data.currentTask.name) + ' (' + (data.currentTask.current || '') + ')';
+          progressCount.textContent = processed + '/' + total;
 
-        // 更新最近完成項目
-        if (data.currentTask.recentCompleted) {
-          updateRecentItems(data.currentTask.recentCompleted);
+          // 更新最近完成項目
+          if (data.currentTask.recentCompleted) {
+            updateRecentItems(data.currentTask.recentCompleted);
+          }
         }
       } else if (data.isRunning) {
         progressTask.textContent = '準備中...';
+        progressBar.style.width = '10%';
+        progressBar.textContent = '';
       }
     }
 
