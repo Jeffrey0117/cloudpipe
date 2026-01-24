@@ -57,7 +57,7 @@ const sharp = require('sharp');
 const zlib = require('zlib');
 
 // 維護系統
-const RecordChecker = require('./lurl-checker');
+const RecordChecker = require('./_lurl-checker');
 const {
   MaintenanceScheduler,
   DownloadStrategy,
