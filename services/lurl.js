@@ -1350,6 +1350,70 @@ function adminPage() {
     .maintenance-status.success { background: #d4edda; color: #155724; }
     .maintenance-status.error { background: #f8d7da; color: #721c24; }
     .btn-sm { padding: 8px 16px; font-size: 0.85em; white-space: nowrap; }
+
+    /* Enhanced Maintenance UI */
+    .maint-section { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 16px; margin-bottom: 16px; }
+    .maint-section h3 { font-size: 1em; margin: 0 0 12px 0; color: #333; display: flex; align-items: center; gap: 8px; }
+    .maint-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .maint-header h2 { margin: 0; font-size: 1.3em; }
+    .auto-toggle { display: flex; align-items: center; gap: 8px; }
+    .auto-toggle label { font-size: 0.9em; color: #666; }
+    .toggle-switch { position: relative; width: 50px; height: 26px; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider { position: absolute; cursor: pointer; inset: 0; background: #ccc; border-radius: 26px; transition: 0.3s; }
+    .toggle-slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: 0.3s; }
+    .toggle-switch input:checked + .toggle-slider { background: #4caf50; }
+    .toggle-switch input:checked + .toggle-slider:before { transform: translateX(24px); }
+
+    .stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+    .stat-box { background: #f5f5f5; padding: 16px; border-radius: 8px; text-align: center; cursor: pointer; transition: all 0.2s; }
+    .stat-box:hover { background: #e3f2fd; transform: translateY(-2px); }
+    .stat-box.active { background: #2196F3; color: white; }
+    .stat-box .count { font-size: 1.8em; font-weight: bold; }
+    .stat-box .label { font-size: 0.8em; color: #666; margin-top: 4px; }
+    .stat-box.active .label { color: rgba(255,255,255,0.9); }
+
+    .quick-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .quick-actions .btn { display: flex; align-items: center; gap: 6px; }
+
+    .strategy-list { display: flex; flex-direction: column; gap: 8px; }
+    .strategy-item { display: flex; align-items: center; gap: 12px; padding: 12px; background: #f9f9f9; border-radius: 8px; }
+    .strategy-item:hover { background: #f0f0f0; }
+    .strategy-check { width: 20px; }
+    .strategy-icon { font-size: 1.3em; width: 32px; text-align: center; }
+    .strategy-info { flex: 1; }
+    .strategy-name { font-weight: 500; font-size: 0.95em; }
+    .strategy-meta { font-size: 0.75em; color: #888; margin-top: 2px; }
+    .strategy-count { min-width: 60px; text-align: center; padding: 4px 8px; background: #e3f2fd; color: #1976d2; border-radius: 4px; font-size: 0.85em; font-weight: 500; }
+    .strategy-count.zero { background: #e8e8e8; color: #666; }
+
+    .progress-section { display: none; }
+    .progress-section.active { display: block; }
+    .progress-bar-container { height: 24px; background: #e0e0e0; border-radius: 12px; overflow: hidden; margin-bottom: 8px; }
+    .progress-bar { height: 100%; background: linear-gradient(90deg, #4caf50, #8bc34a); border-radius: 12px; transition: width 0.3s; display: flex; align-items: center; justify-content: center; color: white; font-size: 0.85em; font-weight: 500; }
+    .progress-info { display: flex; justify-content: space-between; font-size: 0.85em; color: #666; }
+    .progress-recent { margin-top: 12px; }
+    .progress-recent-title { font-size: 0.85em; color: #666; margin-bottom: 6px; }
+    .progress-recent-list { display: flex; flex-wrap: wrap; gap: 6px; }
+    .progress-recent-item { padding: 4px 8px; background: #f0f0f0; border-radius: 4px; font-size: 0.8em; }
+    .progress-recent-item.success { background: #d4edda; color: #155724; }
+    .progress-recent-item.error { background: #f8d7da; color: #721c24; }
+
+    .history-list { max-height: 200px; overflow-y: auto; }
+    .history-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #eee; font-size: 0.85em; }
+    .history-item:last-child { border-bottom: none; }
+    .history-time { color: #888; min-width: 140px; }
+    .history-strategy { font-weight: 500; min-width: 80px; }
+    .history-result { flex: 1; }
+    .history-result.success { color: #4caf50; }
+    .history-result.error { color: #e53935; }
+    .history-duration { color: #888; min-width: 60px; text-align: right; }
+    .history-empty { color: #888; text-align: center; padding: 20px; }
+
+    @media (max-width: 768px) {
+      .stats-grid { grid-template-columns: repeat(3, 1fr); }
+      .quick-actions { flex-direction: column; }
+    }
   </style>
 </head>
 <body>
@@ -1628,8 +1692,140 @@ function adminPage() {
 
     <!-- 維護 Tab -->
     <div class="tab-content" id="tab-maintenance">
-      <div class="version-panel" style="margin-bottom:0;">
-        <h2>🔧 資料維護</h2>
+      <!-- Header with Auto Toggle -->
+      <div class="maint-header">
+        <h2>🔧 維護管理</h2>
+        <div class="auto-toggle">
+          <label>自動排程</label>
+          <label class="toggle-switch">
+            <input type="checkbox" id="autoScheduleToggle" onchange="toggleAutoSchedule(this.checked)">
+            <span class="toggle-slider"></span>
+          </label>
+          <span id="nextRunTime" style="font-size:0.8em;color:#888;"></span>
+        </div>
+      </div>
+
+      <!-- 待處理統計 -->
+      <div class="maint-section">
+        <h3>📊 待處理統計</h3>
+        <div class="stats-grid" id="maintStats">
+          <div class="stat-box" data-strategy="download">
+            <div class="count" id="statDownload">-</div>
+            <div class="label">下載</div>
+          </div>
+          <div class="stat-box" data-strategy="thumbnail">
+            <div class="count" id="statThumbnail">-</div>
+            <div class="label">縮圖</div>
+          </div>
+          <div class="stat-box" data-strategy="preview">
+            <div class="count" id="statPreview">-</div>
+            <div class="label">預覽</div>
+          </div>
+          <div class="stat-box" data-strategy="hls">
+            <div class="count" id="statHLS">-</div>
+            <div class="label">HLS</div>
+          </div>
+          <div class="stat-box" data-strategy="cleanup">
+            <div class="count" id="statCleanup">-</div>
+            <div class="label">清理</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 快速操作 -->
+      <div class="maint-section">
+        <h3>🚀 快速操作</h3>
+        <div class="quick-actions">
+          <button class="btn btn-primary" onclick="runAllMaintenance()" id="runAllBtn">▶ 執行全部維護</button>
+          <button class="btn" style="background:#ff9800;color:white" onclick="syncStatus()">↻ 同步狀態</button>
+          <button class="btn" style="background:#9c27b0;color:white" onclick="runMigrate()">📥 狀態遷移</button>
+        </div>
+      </div>
+
+      <!-- 策略控制 -->
+      <div class="maint-section">
+        <h3>⚙️ 策略控制</h3>
+        <div class="strategy-list" id="strategyList">
+          <div class="strategy-item" data-strategy="download">
+            <input type="checkbox" class="strategy-check" checked data-strategy="download">
+            <div class="strategy-icon">📥</div>
+            <div class="strategy-info">
+              <div class="strategy-name">下載</div>
+              <div class="strategy-meta">優先級: 1 | 批次: 5</div>
+            </div>
+            <div class="strategy-count" id="countDownload">0</div>
+            <button class="btn btn-primary btn-sm" onclick="runStrategy('download')">▶</button>
+          </div>
+          <div class="strategy-item" data-strategy="thumbnail">
+            <input type="checkbox" class="strategy-check" checked data-strategy="thumbnail">
+            <div class="strategy-icon">🖼️</div>
+            <div class="strategy-info">
+              <div class="strategy-name">縮圖</div>
+              <div class="strategy-meta">優先級: 2 | 批次: 20</div>
+            </div>
+            <div class="strategy-count" id="countThumbnail">0</div>
+            <button class="btn btn-primary btn-sm" onclick="runStrategy('thumbnail')">▶</button>
+          </div>
+          <div class="strategy-item" data-strategy="preview">
+            <input type="checkbox" class="strategy-check" checked data-strategy="preview">
+            <div class="strategy-icon">🎞️</div>
+            <div class="strategy-info">
+              <div class="strategy-name">預覽</div>
+              <div class="strategy-meta">優先級: 3 | 批次: 5</div>
+            </div>
+            <div class="strategy-count" id="countPreview">0</div>
+            <button class="btn btn-primary btn-sm" onclick="runStrategy('preview')">▶</button>
+          </div>
+          <div class="strategy-item" data-strategy="hls">
+            <input type="checkbox" class="strategy-check" checked data-strategy="hls">
+            <div class="strategy-icon">🎬</div>
+            <div class="strategy-info">
+              <div class="strategy-name">HLS 轉檔</div>
+              <div class="strategy-meta">優先級: 4 | 批次: 1</div>
+            </div>
+            <div class="strategy-count" id="countHLS">0</div>
+            <button class="btn btn-primary btn-sm" onclick="runStrategy('hls')">▶</button>
+          </div>
+          <div class="strategy-item" data-strategy="cleanup">
+            <input type="checkbox" class="strategy-check" checked data-strategy="cleanup">
+            <div class="strategy-icon">🗑️</div>
+            <div class="strategy-info">
+              <div class="strategy-name">清理</div>
+              <div class="strategy-meta">優先級: 5 | 批次: 10</div>
+            </div>
+            <div class="strategy-count" id="countCleanup">0</div>
+            <button class="btn btn-primary btn-sm" onclick="runStrategy('cleanup')">▶</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 執行進度 -->
+      <div class="maint-section progress-section" id="progressSection">
+        <h3>📈 執行進度 <span id="progressLive" style="font-size:0.8em;color:#4caf50;margin-left:8px;">● 即時更新中</span></h3>
+        <div class="progress-bar-container">
+          <div class="progress-bar" id="progressBar" style="width:0%">0%</div>
+        </div>
+        <div class="progress-info">
+          <span id="progressTask">等待中...</span>
+          <span id="progressCount">0/0</span>
+        </div>
+        <div class="progress-recent">
+          <div class="progress-recent-title">最近完成:</div>
+          <div class="progress-recent-list" id="recentItems"></div>
+        </div>
+      </div>
+
+      <!-- 執行歷史 -->
+      <div class="maint-section">
+        <h3>📜 執行歷史</h3>
+        <div class="history-list" id="historyList">
+          <div class="history-empty">載入中...</div>
+        </div>
+      </div>
+
+      <!-- 舊版維護操作（保留向下相容） -->
+      <div class="maint-section" style="margin-top:24px;">
+        <h3>🔧 其他維護操作</h3>
         <div class="maintenance-list">
           <div class="maintenance-item">
             <div class="maintenance-icon">🔧</div>
@@ -1643,20 +1839,11 @@ function adminPage() {
           <div class="maintenance-item">
             <div class="maintenance-icon">🔄</div>
             <div class="maintenance-info">
-              <div class="maintenance-label">重試下載</div>
+              <div class="maintenance-label">重試下載 (Puppeteer)</div>
               <div class="maintenance-desc">用 Puppeteer 重新下載失敗的檔案</div>
             </div>
             <div class="maintenance-status" id="retryStatus">就緒</div>
             <button class="btn btn-primary btn-sm" onclick="retryFailed()" id="retryBtn">執行</button>
-          </div>
-          <div class="maintenance-item">
-            <div class="maintenance-icon">🖼️</div>
-            <div class="maintenance-info">
-              <div class="maintenance-label">產生縮圖</div>
-              <div class="maintenance-desc">為沒有縮圖的影片產生預覽圖</div>
-            </div>
-            <div class="maintenance-status" id="thumbStatus">就緒</div>
-            <button class="btn btn-primary btn-sm" onclick="generateThumbnails()" id="thumbBtn">執行</button>
           </div>
           <div class="maintenance-item">
             <div class="maintenance-icon">🗑️</div>
@@ -2528,6 +2715,331 @@ function adminPage() {
       }
     }
 
+    // ===== 維護排程管理 =====
+    let maintPollInterval = null;
+    let recentCompleted = [];
+
+    // 載入維護狀態統計
+    async function loadMaintenanceStats() {
+      try {
+        const res = await fetch('/lurl/api/maintenance/status-counts');
+        const data = await res.json();
+        if (data.ok) {
+          // 更新統計卡片
+          document.getElementById('statDownload').textContent = data.pending?.download || 0;
+          document.getElementById('statThumbnail').textContent = data.pending?.thumbnail || 0;
+          document.getElementById('statPreview').textContent = data.pending?.preview || 0;
+          document.getElementById('statHLS').textContent = data.pending?.hls || 0;
+          document.getElementById('statCleanup').textContent = data.pending?.cleanup || 0;
+
+          // 更新策略列表計數
+          document.getElementById('countDownload').textContent = data.pending?.download || 0;
+          document.getElementById('countThumbnail').textContent = data.pending?.thumbnail || 0;
+          document.getElementById('countPreview').textContent = data.pending?.preview || 0;
+          document.getElementById('countHLS').textContent = data.pending?.hls || 0;
+          document.getElementById('countCleanup').textContent = data.pending?.cleanup || 0;
+
+          // 設定計數樣式
+          ['Download', 'Thumbnail', 'Preview', 'HLS', 'Cleanup'].forEach(name => {
+            const el = document.getElementById('count' + name);
+            if (el) {
+              el.classList.toggle('zero', el.textContent === '0');
+            }
+          });
+        }
+      } catch (e) {
+        console.error('載入維護統計失敗:', e);
+      }
+    }
+
+    // 載入維護系統狀態（自動排程、執行中等）
+    async function loadMaintenanceStatus() {
+      try {
+        const res = await fetch('/lurl/api/maintenance/status');
+        const data = await res.json();
+        if (data.ok) {
+          // 更新自動排程開關
+          const toggle = document.getElementById('autoScheduleToggle');
+          if (toggle) toggle.checked = data.autoRunning;
+
+          // 更新下次執行時間
+          const nextRunEl = document.getElementById('nextRunTime');
+          if (nextRunEl && data.nextRun) {
+            nextRunEl.textContent = '下次: ' + new Date(data.nextRun).toLocaleTimeString();
+          } else if (nextRunEl) {
+            nextRunEl.textContent = '';
+          }
+
+          // 如果正在執行，開始輪詢進度
+          if (data.isRunning) {
+            showProgress(true);
+            startProgressPolling();
+          }
+        }
+      } catch (e) {
+        console.error('載入維護狀態失敗:', e);
+      }
+    }
+
+    // 載入執行歷史
+    async function loadMaintenanceHistory() {
+      try {
+        const res = await fetch('/lurl/api/maintenance/history?limit=10');
+        const data = await res.json();
+        const container = document.getElementById('historyList');
+        if (!container) return;
+
+        if (!data.ok || !data.history || data.history.length === 0) {
+          container.innerHTML = '<div class="history-empty">尚無執行記錄</div>';
+          return;
+        }
+
+        container.innerHTML = data.history.map(h => {
+          const time = new Date(h.startTime).toLocaleString();
+          const success = h.success >= 0 ? h.success : 0;
+          const failed = h.failed >= 0 ? h.failed : 0;
+          const isSuccess = failed === 0;
+          const duration = h.duration ? (h.duration / 1000).toFixed(1) + 's' : '-';
+
+          return \`<div class="history-item">
+            <span class="history-time">\${time}</span>
+            <span class="history-strategy">\${h.strategy || 'all'}</span>
+            <span class="history-result \${isSuccess ? 'success' : 'error'}">\${isSuccess ? '成功' : '失敗'} \${success}/\${success + failed}</span>
+            <span class="history-duration">\${duration}</span>
+          </div>\`;
+        }).join('');
+      } catch (e) {
+        console.error('載入維護歷史失敗:', e);
+        const container = document.getElementById('historyList');
+        if (container) container.innerHTML = '<div class="history-empty">載入失敗</div>';
+      }
+    }
+
+    // 切換自動排程
+    async function toggleAutoSchedule(enabled) {
+      try {
+        const endpoint = enabled ? '/lurl/api/maintenance/auto/start' : '/lurl/api/maintenance/auto/stop';
+        const res = await fetch(endpoint, { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) {
+          showToast(enabled ? '自動排程已啟動' : '自動排程已停止');
+          if (data.nextRun) {
+            document.getElementById('nextRunTime').textContent = '下次: ' + new Date(data.nextRun).toLocaleTimeString();
+          } else {
+            document.getElementById('nextRunTime').textContent = '';
+          }
+        } else {
+          showToast('操作失敗: ' + (data.error || '未知錯誤'), 'error');
+          document.getElementById('autoScheduleToggle').checked = !enabled;
+        }
+      } catch (e) {
+        showToast('操作失敗: ' + e.message, 'error');
+        document.getElementById('autoScheduleToggle').checked = !enabled;
+      }
+    }
+
+    // 執行全部維護
+    async function runAllMaintenance() {
+      const btn = document.getElementById('runAllBtn');
+      btn.disabled = true;
+      btn.textContent = '執行中...';
+
+      try {
+        const res = await fetch('/lurl/api/maintenance/run', { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) {
+          showToast('維護任務已開始執行');
+          showProgress(true);
+          startProgressPolling();
+        } else {
+          showToast('執行失敗: ' + (data.error || '未知錯誤'), 'error');
+          btn.disabled = false;
+          btn.textContent = '▶ 執行全部維護';
+        }
+      } catch (e) {
+        showToast('執行失敗: ' + e.message, 'error');
+        btn.disabled = false;
+        btn.textContent = '▶ 執行全部維護';
+      }
+    }
+
+    // 執行單一策略
+    async function runStrategy(strategy) {
+      const btn = event.target;
+      btn.disabled = true;
+
+      try {
+        const res = await fetch('/lurl/api/maintenance/run/' + strategy, { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) {
+          showToast('策略 ' + strategy + ' 已開始執行');
+          showProgress(true);
+          startProgressPolling();
+        } else {
+          showToast('執行失敗: ' + (data.error || '未知錯誤'), 'error');
+          btn.disabled = false;
+        }
+      } catch (e) {
+        showToast('執行失敗: ' + e.message, 'error');
+        btn.disabled = false;
+      }
+    }
+
+    // 同步狀態
+    async function syncStatus() {
+      try {
+        showToast('開始同步狀態...');
+        const res = await fetch('/lurl/api/maintenance/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dryRun: false })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showToast('狀態同步完成，更新 ' + (data.updated || 0) + ' 筆');
+          loadMaintenanceStats();
+        } else {
+          showToast('同步失敗: ' + (data.error || '未知錯誤'), 'error');
+        }
+      } catch (e) {
+        showToast('同步失敗: ' + e.message, 'error');
+      }
+    }
+
+    // 狀態遷移
+    async function runMigrate() {
+      if (!confirm('確定要執行狀態遷移？這會根據現有資料設定初始狀態。')) return;
+
+      try {
+        showToast('開始狀態遷移...');
+        const res = await fetch('/lurl/api/maintenance/migrate', { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) {
+          showToast('狀態遷移完成，更新 ' + (data.updated || 0) + ' 筆');
+          loadMaintenanceStats();
+        } else {
+          showToast('遷移失敗: ' + (data.error || '未知錯誤'), 'error');
+        }
+      } catch (e) {
+        showToast('遷移失敗: ' + e.message, 'error');
+      }
+    }
+
+    // 顯示/隱藏進度區塊
+    function showProgress(show) {
+      const section = document.getElementById('progressSection');
+      if (section) {
+        section.classList.toggle('active', show);
+      }
+    }
+
+    // 開始輪詢進度
+    function startProgressPolling() {
+      if (maintPollInterval) return;
+
+      maintPollInterval = setInterval(async () => {
+        try {
+          const res = await fetch('/lurl/api/maintenance/status');
+          const data = await res.json();
+
+          if (data.ok) {
+            updateProgressUI(data);
+
+            if (!data.isRunning) {
+              stopProgressPolling();
+              onMaintenanceComplete();
+            }
+          }
+        } catch (e) {
+          console.error('輪詢進度失敗:', e);
+        }
+      }, 1000);
+    }
+
+    // 停止輪詢
+    function stopProgressPolling() {
+      if (maintPollInterval) {
+        clearInterval(maintPollInterval);
+        maintPollInterval = null;
+      }
+    }
+
+    // 更新進度 UI
+    function updateProgressUI(data) {
+      const progressBar = document.getElementById('progressBar');
+      const progressTask = document.getElementById('progressTask');
+      const progressCount = document.getElementById('progressCount');
+
+      if (data.currentTask) {
+        const total = data.currentTask.total || 1;
+        const processed = data.currentTask.processed || 0;
+        const percent = Math.round((processed / total) * 100);
+
+        progressBar.style.width = percent + '%';
+        progressBar.textContent = percent + '%';
+        progressTask.textContent = '正在處理: ' + data.currentTask.strategy + ' (' + data.currentTask.current + ')';
+        progressCount.textContent = processed + '/' + total;
+
+        // 更新最近完成項目
+        if (data.currentTask.recentCompleted) {
+          updateRecentItems(data.currentTask.recentCompleted);
+        }
+      } else if (data.isRunning) {
+        progressTask.textContent = '準備中...';
+      }
+    }
+
+    // 更新最近完成項目
+    function updateRecentItems(items) {
+      const container = document.getElementById('recentItems');
+      if (!container || !items) return;
+
+      container.innerHTML = items.slice(-5).map(item => {
+        const cls = item.success ? 'success' : 'error';
+        const icon = item.success ? '✓' : '✗';
+        const id = (item.id || '').substring(0, 6);
+        return \`<span class="progress-recent-item \${cls}">\${id} \${icon}</span>\`;
+      }).join('');
+    }
+
+    // 維護完成
+    function onMaintenanceComplete() {
+      showToast('維護任務完成');
+      showProgress(false);
+
+      // 重設按鈕狀態
+      const runAllBtn = document.getElementById('runAllBtn');
+      if (runAllBtn) {
+        runAllBtn.disabled = false;
+        runAllBtn.textContent = '▶ 執行全部維護';
+      }
+
+      // 重設策略按鈕
+      document.querySelectorAll('.strategy-item button').forEach(btn => {
+        btn.disabled = false;
+      });
+
+      // 重新載入資料
+      loadMaintenanceStats();
+      loadMaintenanceHistory();
+    }
+
+    // 維護 Tab 切換時載入資料
+    function onMaintenanceTabLoad() {
+      loadMaintenanceStats();
+      loadMaintenanceStatus();
+      loadMaintenanceHistory();
+    }
+
+    // 擴展原有的 switchMainTab 來處理維護 tab
+    const originalSwitchMainTab = switchMainTab;
+    switchMainTab = function(tabName) {
+      originalSwitchMainTab(tabName);
+      if (tabName === 'maintenance') {
+        onMaintenanceTabLoad();
+      }
+    };
+
     // ===== 滾動位置記憶 =====
     const SCROLL_KEY = 'lurlAdminScroll';
 
@@ -2566,6 +3078,11 @@ function adminPage() {
     checkHashAndSwitch();
     restoreScrollPosition();
     listenHLSProgress();
+
+    // 如果啟動時在維護 tab，載入維護資料
+    if (location.hash === '#maintenance') {
+      onMaintenanceTabLoad();
+    }
   </script>
 </body>
 </html>`;
