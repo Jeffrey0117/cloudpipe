@@ -35,6 +35,12 @@ function init() {
   // 建立表格
   createTables();
 
+  // 執行資料庫遷移（新增狀態欄位等）
+  runMigrations();
+
+  // 檢查是否有記錄需要狀態遷移
+  checkStatusMigrationNeeded();
+
   // 檢查是否需要遷移
   migrateFromJsonl();
 
@@ -170,6 +176,102 @@ function createTables() {
     CREATE INDEX IF NOT EXISTS idx_hidden_records_userId ON hidden_records(userId);
     CREATE INDEX IF NOT EXISTS idx_tag_subscriptions_userId ON tag_subscriptions(userId);
   `);
+
+  // Recoveries 表（復原歷史）
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS recoveries (
+      id TEXT PRIMARY KEY,
+      visitorId TEXT NOT NULL,
+      recordId TEXT NOT NULL,
+      recoveredAt TEXT,
+      UNIQUE(visitorId, recordId)
+    );
+    CREATE INDEX IF NOT EXISTS idx_recoveries_visitorId ON recoveries(visitorId);
+    CREATE INDEX IF NOT EXISTS idx_recoveries_recordId ON recoveries(recordId);
+  `);
+}
+
+// 資料庫遷移（新增欄位）
+function runMigrations() {
+  const migrations = [
+    // Records 表狀態欄位
+    { table: 'records', column: 'sourceStatus', type: "TEXT DEFAULT 'unknown'" },
+    { table: 'records', column: 'sourceCheckedAt', type: 'TEXT' },
+    { table: 'records', column: 'downloadStatus', type: "TEXT DEFAULT 'pending'" },
+    { table: 'records', column: 'downloadRetries', type: 'INTEGER DEFAULT 0' },
+    { table: 'records', column: 'downloadError', type: 'TEXT' },
+    { table: 'records', column: 'thumbnailStatus', type: "TEXT DEFAULT 'pending'" },
+    { table: 'records', column: 'previewStatus', type: "TEXT DEFAULT 'pending'" },
+    { table: 'records', column: 'hlsStatus', type: "TEXT DEFAULT 'pending'" },
+    { table: 'records', column: 'originalStatus', type: "TEXT DEFAULT 'missing'" },
+    { table: 'records', column: 'lastProcessedAt', type: 'TEXT' },
+    { table: 'records', column: 'lastErrorAt', type: 'TEXT' },
+    // Quotas 表新增欄位
+    { table: 'quotas', column: 'totalRecoveries', type: 'INTEGER DEFAULT 0' },
+    { table: 'quotas', column: 'lastRecoveryAt', type: 'TEXT' },
+  ];
+
+  for (const { table, column, type } of migrations) {
+    try {
+      // 檢查欄位是否存在
+      const tableInfo = db.prepare(`PRAGMA table_info(${table})`).all();
+      const columnExists = tableInfo.some((col) => col.name === column);
+
+      if (!columnExists) {
+        db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+        console.log(`[lurl-db] 新增欄位: ${table}.${column}`);
+      }
+    } catch (err) {
+      // 忽略已存在的欄位錯誤
+      if (!err.message.includes('duplicate column')) {
+        console.error(`[lurl-db] 遷移失敗 ${table}.${column}:`, err.message);
+      }
+    }
+  }
+
+  // 新增狀態相關索引
+  const indexes = [
+    'CREATE INDEX IF NOT EXISTS idx_records_downloadStatus ON records(downloadStatus)',
+    'CREATE INDEX IF NOT EXISTS idx_records_hlsStatus ON records(hlsStatus)',
+    'CREATE INDEX IF NOT EXISTS idx_records_sourceStatus ON records(sourceStatus)',
+    'CREATE INDEX IF NOT EXISTS idx_records_thumbnailStatus ON records(thumbnailStatus)',
+    'CREATE INDEX IF NOT EXISTS idx_records_previewStatus ON records(previewStatus)',
+    'CREATE INDEX IF NOT EXISTS idx_records_originalStatus ON records(originalStatus)',
+  ];
+
+  for (const sql of indexes) {
+    try {
+      db.exec(sql);
+    } catch (err) {
+      // 索引可能已存在，忽略
+    }
+  }
+}
+
+// 檢查是否有記錄需要狀態遷移
+function checkStatusMigrationNeeded() {
+  try {
+    const result = db.prepare(`
+      SELECT COUNT(*) as count FROM records
+      WHERE downloadStatus IS NULL OR downloadStatus = 'pending'
+    `).get();
+
+    if (result.count > 0) {
+      // 檢查是否有已完成但狀態未設定的記錄
+      const completedWithoutStatus = db.prepare(`
+        SELECT COUNT(*) as count FROM records
+        WHERE downloadStatus IS NULL
+          AND (backupPath IS NOT NULL OR hlsReady = 1)
+      `).get();
+
+      if (completedWithoutStatus.count > 0) {
+        console.warn(`[lurl-db] ⚠️ 發現 ${completedWithoutStatus.count} 筆記錄需要狀態遷移`);
+        console.warn('[lurl-db] 請執行 POST /lurl/api/maintenance/migrate 來設定初始狀態');
+      }
+    }
+  } catch (err) {
+    // 可能是欄位尚未建立，忽略
+  }
 }
 
 // 從 JSONL 遷移資料
@@ -304,7 +406,11 @@ function updateRecord(id, updates) {
     UPDATE records SET
       type = ?, title = ?, pageUrl = ?, fileUrl = ?, backupPath = ?, thumbnailPath = ?,
       capturedAt = ?, blocked = ?, rating = ?, likeCount = ?, dislikeCount = ?,
-      tags = ?, hlsReady = ?, hlsPath = ?, metadata = ?
+      tags = ?, hlsReady = ?, hlsPath = ?, metadata = ?,
+      sourceStatus = ?, sourceCheckedAt = ?,
+      downloadStatus = ?, downloadRetries = ?, downloadError = ?,
+      thumbnailStatus = ?, previewStatus = ?, hlsStatus = ?, originalStatus = ?,
+      lastProcessedAt = ?, lastErrorAt = ?
     WHERE id = ?
   `);
   stmt.run(
@@ -323,6 +429,17 @@ function updateRecord(id, updates) {
     merged.hlsReady ? 1 : 0,
     merged.hlsPath,
     JSON.stringify({ votes: merged.votes }),
+    merged.sourceStatus || 'unknown',
+    merged.sourceCheckedAt || null,
+    merged.downloadStatus || 'pending',
+    merged.downloadRetries || 0,
+    merged.downloadError || null,
+    merged.thumbnailStatus || 'pending',
+    merged.previewStatus || 'pending',
+    merged.hlsStatus || 'pending',
+    merged.originalStatus || 'missing',
+    merged.lastProcessedAt || null,
+    merged.lastErrorAt || null,
     id
   );
   return merged;
@@ -342,9 +459,20 @@ function findRecordByFileUrl(fileUrl) {
   return row ? rowToRecord(row) : null;
 }
 
+// 安全的 JSON 解析
+function safeJsonParse(str, defaultValue = {}) {
+  if (!str) return defaultValue;
+  try {
+    return JSON.parse(str);
+  } catch (e) {
+    console.error('[lurl-db] JSON 解析錯誤:', e.message);
+    return defaultValue;
+  }
+}
+
 // Row to Record 轉換
 function rowToRecord(row) {
-  const metadata = row.metadata ? JSON.parse(row.metadata) : {};
+  const metadata = safeJsonParse(row.metadata, {});
   return {
     id: row.id,
     type: row.type,
@@ -358,10 +486,22 @@ function rowToRecord(row) {
     rating: row.rating,
     likeCount: row.likeCount,
     dislikeCount: row.dislikeCount,
-    tags: row.tags ? JSON.parse(row.tags) : [],
+    tags: safeJsonParse(row.tags, []),
     hlsReady: !!row.hlsReady,
     hlsPath: row.hlsPath,
-    votes: metadata.votes || {}
+    votes: metadata.votes || {},
+    // 狀態欄位
+    sourceStatus: row.sourceStatus || 'unknown',
+    sourceCheckedAt: row.sourceCheckedAt,
+    downloadStatus: row.downloadStatus || 'pending',
+    downloadRetries: row.downloadRetries || 0,
+    downloadError: row.downloadError,
+    thumbnailStatus: row.thumbnailStatus || 'pending',
+    previewStatus: row.previewStatus || 'pending',
+    hlsStatus: row.hlsStatus || 'pending',
+    originalStatus: row.originalStatus || 'missing',
+    lastProcessedAt: row.lastProcessedAt,
+    lastErrorAt: row.lastErrorAt,
   };
 }
 
@@ -426,7 +566,10 @@ function rowToQuota(row) {
     history: row.history ? JSON.parse(row.history) : [],
     device: row.device ? JSON.parse(row.device) : null,
     contribution: row.contribution ? JSON.parse(row.contribution) : null,
-    createdAt: row.createdAt
+    createdAt: row.createdAt,
+    // 新增欄位
+    totalRecoveries: row.totalRecoveries || 0,
+    lastRecoveryAt: row.lastRecoveryAt,
   };
 }
 
@@ -692,6 +835,202 @@ function clearTagSubscriptions(userId) {
   db.prepare('DELETE FROM tag_subscriptions WHERE userId = ?').run(userId);
 }
 
+// ==================== Recoveries CRUD ====================
+
+function getRecovery(visitorId, recordId) {
+  return db.prepare('SELECT * FROM recoveries WHERE visitorId = ? AND recordId = ?').get(visitorId, recordId);
+}
+
+function getRecoveriesByVisitor(visitorId) {
+  return db.prepare('SELECT * FROM recoveries WHERE visitorId = ? ORDER BY recoveredAt DESC').all(visitorId);
+}
+
+function getRecoveriesByRecord(recordId) {
+  return db.prepare('SELECT * FROM recoveries WHERE recordId = ? ORDER BY recoveredAt DESC').all(recordId);
+}
+
+function createRecovery(visitorId, recordId) {
+  const id = `${visitorId}_${recordId}`;
+  const now = new Date().toISOString();
+  try {
+    db.prepare(`
+      INSERT INTO recoveries (id, visitorId, recordId, recoveredAt)
+      VALUES (?, ?, ?, ?)
+    `).run(id, visitorId, recordId, now);
+    return { id, visitorId, recordId, recoveredAt: now };
+  } catch (err) {
+    // UNIQUE constraint violation - already exists
+    return null;
+  }
+}
+
+function countRecoveriesByVisitor(visitorId) {
+  const result = db.prepare('SELECT COUNT(*) as count FROM recoveries WHERE visitorId = ?').get(visitorId);
+  return result.count;
+}
+
+// ==================== 狀態遷移（從現有資料設定初始狀態） ====================
+
+/**
+ * 遷移記錄狀態（根據檔案存在性設定初始狀態）
+ * @param {object} checker - RecordChecker 實例
+ * @param {object} options - 選項
+ * @param {boolean} options.dryRun - 只顯示不更新
+ * @param {boolean} options.force - 強制重設所有狀態
+ * @returns {object} 遷移統計
+ */
+function migrateRecordStatuses(checker, options = {}) {
+  const { dryRun = false, force = false } = options;
+  const records = getAllRecords();
+  const stats = {
+    total: records.length,
+    migrated: 0,
+    skipped: 0,
+    errors: [],
+  };
+
+  console.log(`[lurl-db] 開始狀態遷移 (${records.length} 筆記錄, dryRun=${dryRun}, force=${force})`);
+
+  for (const record of records) {
+    try {
+      // 如果已有狀態且不強制，跳過
+      if (!force && record.downloadStatus !== 'pending') {
+        stats.skipped++;
+        continue;
+      }
+
+      const updates = {};
+
+      // === 下載狀態 ===
+      if (checker.hasLocalVideo(record) || checker.hasLocalImage(record)) {
+        updates.downloadStatus = 'completed';
+        updates.originalStatus = 'exists';
+      } else if (record.hlsReady && checker.hasHLS(record)) {
+        updates.downloadStatus = 'completed';
+        updates.originalStatus = 'cleaned';
+      } else if (record.fileUrl) {
+        updates.downloadStatus = 'pending';
+        updates.originalStatus = 'missing';
+      } else {
+        // 無 fileUrl，不需要下載
+        updates.downloadStatus = 'completed';
+        updates.originalStatus = 'missing';
+      }
+
+      // === 縮圖狀態 ===
+      if (record.type === 'video') {
+        if (checker.hasThumbnail(record)) {
+          updates.thumbnailStatus = 'completed';
+        } else if (updates.downloadStatus === 'completed') {
+          updates.thumbnailStatus = 'pending';
+        } else {
+          updates.thumbnailStatus = 'pending';
+        }
+      } else {
+        updates.thumbnailStatus = 'skipped'; // 圖片不需要縮圖
+      }
+
+      // === 預覽狀態 ===
+      if (record.type !== 'video') {
+        updates.previewStatus = 'skipped';
+      } else if (record.isShortVideo || (record.duration && record.duration < 10)) {
+        updates.previewStatus = 'skipped';
+      } else if (checker.hasPreview(record)) {
+        updates.previewStatus = 'completed';
+      } else {
+        updates.previewStatus = 'pending';
+      }
+
+      // === HLS 狀態 ===
+      if (record.type !== 'video') {
+        updates.hlsStatus = 'skipped';
+      } else if (record.isShortVideo || (record.duration && record.duration < 10)) {
+        updates.hlsStatus = 'skipped';
+      } else if (record.hlsReady && checker.hasHLS(record)) {
+        updates.hlsStatus = 'completed';
+      } else {
+        updates.hlsStatus = 'pending';
+      }
+
+      // === 來源狀態 ===
+      updates.sourceStatus = 'unknown';
+
+      if (!dryRun) {
+        updateRecord(record.id, updates);
+      }
+
+      stats.migrated++;
+
+      if (stats.migrated % 100 === 0) {
+        console.log(`[lurl-db] 已處理 ${stats.migrated}/${records.length} 筆`);
+      }
+    } catch (err) {
+      stats.errors.push({ id: record.id, error: err.message });
+    }
+  }
+
+  console.log(`[lurl-db] 狀態遷移完成: 遷移 ${stats.migrated}, 跳過 ${stats.skipped}, 錯誤 ${stats.errors.length}`);
+  return stats;
+}
+
+// ==================== Records 狀態查詢 ====================
+
+function getRecordsByStatus(statusField, statusValue, limit = 100) {
+  const validFields = [
+    'downloadStatus', 'thumbnailStatus', 'previewStatus',
+    'hlsStatus', 'originalStatus', 'sourceStatus'
+  ];
+  if (!validFields.includes(statusField)) {
+    throw new Error(`Invalid status field: ${statusField}`);
+  }
+  // Validate and clamp limit
+  limit = Math.max(1, Math.min(1000, parseInt(limit, 10) || 100));
+  const rows = db.prepare(`
+    SELECT * FROM records WHERE ${statusField} = ? ORDER BY capturedAt DESC LIMIT ?
+  `).all(statusValue, limit);
+  return rows.map(rowToRecord);
+}
+
+function getStatusCounts() {
+  const downloadCounts = db.prepare(`
+    SELECT downloadStatus as status, COUNT(*) as count FROM records GROUP BY downloadStatus
+  `).all();
+
+  const thumbnailCounts = db.prepare(`
+    SELECT thumbnailStatus as status, COUNT(*) as count FROM records GROUP BY thumbnailStatus
+  `).all();
+
+  const previewCounts = db.prepare(`
+    SELECT previewStatus as status, COUNT(*) as count FROM records GROUP BY previewStatus
+  `).all();
+
+  const hlsCounts = db.prepare(`
+    SELECT hlsStatus as status, COUNT(*) as count FROM records GROUP BY hlsStatus
+  `).all();
+
+  const originalCounts = db.prepare(`
+    SELECT originalStatus as status, COUNT(*) as count FROM records GROUP BY originalStatus
+  `).all();
+
+  const sourceCounts = db.prepare(`
+    SELECT sourceStatus as status, COUNT(*) as count FROM records GROUP BY sourceStatus
+  `).all();
+
+  const toObject = (arr) => arr.reduce((acc, { status, count }) => {
+    acc[status || 'null'] = count;
+    return acc;
+  }, {});
+
+  return {
+    download: toObject(downloadCounts),
+    thumbnail: toObject(thumbnailCounts),
+    preview: toObject(previewCounts),
+    hls: toObject(hlsCounts),
+    original: toObject(originalCounts),
+    source: toObject(sourceCounts),
+  };
+}
+
 // ==================== 關閉資料庫 ====================
 
 function close() {
@@ -718,11 +1057,21 @@ module.exports = {
   deleteRecord,
   findRecordByUrl,
   findRecordByFileUrl,
+  // Records 狀態查詢
+  getRecordsByStatus,
+  getStatusCounts,
+  migrateRecordStatuses,
   // Quotas
   getAllQuotas,
   getQuota,
   upsertQuota,
   deleteQuota,
+  // Recoveries
+  getRecovery,
+  getRecoveriesByVisitor,
+  getRecoveriesByRecord,
+  createRecovery,
+  countRecoveriesByVisitor,
   // Users
   getAllUsers,
   getUser,

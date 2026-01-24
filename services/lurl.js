@@ -56,6 +56,17 @@ const { spawn } = require('child_process');
 const sharp = require('sharp');
 const zlib = require('zlib');
 
+// 維護系統
+const RecordChecker = require('./lurl-checker');
+const {
+  MaintenanceScheduler,
+  DownloadStrategy,
+  ThumbnailStrategy,
+  PreviewStrategy,
+  HLSStrategy,
+  CleanupStrategy,
+} = require('./maintenance');
+
 // Gzip 壓縮輔助函數
 function sendCompressed(req, res, statusCode, headers, body) {
   const acceptEncoding = req.headers['accept-encoding'] || '';
@@ -140,6 +151,48 @@ const VIP_WHITELIST = (process.env.LURL_VIP_WHITELIST || '').split(',').filter(B
 const JWT_SECRET = process.env.LURL_JWT_SECRET || SESSION_SECRET;
 const JWT_EXPIRES = 7 * 24 * 60 * 60 * 1000; // 7 天
 const REFRESH_EXPIRES = 30 * 24 * 60 * 60 * 1000; // 30 天
+
+// ==================== 維護系統初始化 ====================
+// 建立 RecordChecker 實例
+const recordChecker = new RecordChecker(DATA_DIR, HLS_DIR, PREVIEWS_DIR);
+
+// 延遲初始化維護調度器（需要在 readAllRecords/updateRecord 定義後）
+let maintenanceScheduler = null;
+
+function initMaintenanceScheduler() {
+  if (maintenanceScheduler) return maintenanceScheduler;
+
+  maintenanceScheduler = new MaintenanceScheduler({
+    dataDir: DATA_DIR,
+    readAllRecords: () => lurlDb.getAllRecords(),
+    updateRecord: (id, updates) => lurlDb.updateRecord(id, updates),
+    checker: recordChecker,
+    context: {
+      workr,
+      lurlRetry,
+      generateVideoThumbnail,
+      downloadFile,
+      broadcastLog,
+    },
+    config: {
+      autoRun: false, // 預設不自動執行
+    },
+  });
+
+  // 註冊策略
+  maintenanceScheduler.register(new DownloadStrategy());
+  maintenanceScheduler.register(new ThumbnailStrategy());
+  maintenanceScheduler.register(new PreviewStrategy());
+  maintenanceScheduler.register(new HLSStrategy({ hlsDir: HLS_DIR }));
+  maintenanceScheduler.register(new CleanupStrategy());
+
+  // 載入歷史記錄
+  maintenanceScheduler.loadHistory();
+
+  console.log('[lurl] ✅ 維護系統已初始化');
+
+  return maintenanceScheduler;
+}
 
 // ==================== 會員認證工具 ====================
 
@@ -2770,7 +2823,7 @@ function landingPage() {
     </nav>
     <div class="header-right">
       <button class="theme-toggle" onclick="toggleTheme()" title="切換主題">🌙</button>
-      <a href="/lurl/member/login" class="login-btn">登入</a>
+      <a href="/lurl/login" class="login-btn">登入</a>
     </div>
   </header>
 
@@ -2945,7 +2998,7 @@ function downloadPage() {
     </nav>
     <div class="header-right">
       <button class="theme-toggle" onclick="toggleTheme()" title="切換主題">🌙</button>
-      <a href="/lurl/member/login" class="login-btn">登入</a>
+      <a href="/lurl/login" class="login-btn">登入</a>
     </div>
   </header>
 
@@ -3108,7 +3161,7 @@ function pricingPage() {
     </nav>
     <div class="header-right">
       <button class="theme-toggle" onclick="toggleTheme()" title="切換主題">🌙</button>
-      <a href="/lurl/member/login" class="login-btn">登入</a>
+      <a href="/lurl/login" class="login-btn">登入</a>
     </div>
   </header>
 
@@ -3304,7 +3357,7 @@ function guidePage() {
     </nav>
     <div class="header-right">
       <button class="theme-toggle" onclick="toggleTheme()" title="切換主題">🌙</button>
-      <a href="/lurl/member/login" class="login-btn">登入</a>
+      <a href="/lurl/login" class="login-btn">登入</a>
     </div>
   </header>
 
@@ -3485,7 +3538,7 @@ function feedbackPage() {
     </nav>
     <div class="header-right">
       <button class="theme-toggle" onclick="toggleTheme()" title="切換主題">🌙</button>
-      <a href="/lurl/member/login" class="login-btn">登入</a>
+      <a href="/lurl/login" class="login-btn">登入</a>
     </div>
   </header>
 
@@ -3837,7 +3890,7 @@ function memberRegisterPage(error = '') {
         <button type="submit" class="submit-btn">註冊</button>
       </form>
       <div class="auth-links">
-        已有帳號？<a href="/lurl/member/login">登入</a>
+        已有帳號？<a href="/lurl/login">登入</a>
       </div>
     </div>
   </main>
@@ -4463,6 +4516,7 @@ function memberProfilePage(user) {
 // ==================== Member Collections Page ====================
 
 function memberCollectionsPage(user) {
+  const canUseCollections = user.tier === 'premium' || user.tier === 'admin';
   return `<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -4471,84 +4525,89 @@ function memberCollectionsPage(user) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>我的收藏 - Lurl</title>
   <style>
+    :root {
+      --bg-body: #f8fafc; --bg-header: #ffffff; --bg-card: #ffffff; --bg-input: #f1f5f9;
+      --bg-button: #e2e8f0; --bg-button-hover: #cbd5e1;
+      --text-primary: #1f2937; --text-secondary: #374151; --text-muted: #64748b;
+      --accent: #5BB4D4; --accent-hover: #4AABCC; --accent-green: #4ade80;
+      --border: #e2e8f0; --shadow: rgba(0,0,0,0.08);
+    }
+    [data-theme="dark"] {
+      --bg-body: #0a0a0a; --bg-header: #111111; --bg-card: #161616; --bg-input: #1a1a1a;
+      --bg-button: #2a2a2a; --bg-button-hover: #3a3a3a;
+      --text-primary: #f0f0f0; --text-secondary: #d0d0d0; --text-muted: #888888;
+      --accent: #5BB4D4; --accent-hover: #7EC8E3; --accent-green: #4ade80;
+      --border: #2a2a2a; --shadow: rgba(0,0,0,0.5);
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: white; min-height: 100vh; }
-    .header { background: #1a1a2e; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg-body); color: var(--text-primary); min-height: 100vh; transition: background 0.3s, color 0.3s; }
+    .header { background: var(--bg-header); padding: 15px 20px; display: flex; align-items: center; box-shadow: 0 1px 3px var(--shadow); }
     .header .logo { height: 36px; width: auto; }
+    .header-actions { display: flex; gap: 8px; margin-left: auto; margin-right: 20px; }
+    .header-actions button { background: var(--bg-button); border: none; padding: 8px 12px; border-radius: 8px; font-size: 1.2em; cursor: pointer; transition: all 0.2s; }
+    .header-actions button:hover { background: var(--bg-button-hover); }
     .header nav { display: flex; gap: 20px; align-items: center; }
-    .header nav a { color: #aaa; text-decoration: none; font-size: 0.95em; }
-    .header nav a:hover { color: white; }
-    .header nav a.active { color: white; }
-    .header .user-info { display: flex; align-items: center; gap: 12px; }
-    .header .user-info .nickname { color: #4ade80; font-weight: 500; }
-    .header .logout-btn { color: #888; font-size: 0.85em; cursor: pointer; }
-    .header .logout-btn:hover { color: #ef4444; }
+    .header nav a { color: var(--text-muted); text-decoration: none; font-size: 0.95em; }
+    .header nav a:hover, .header nav a.active { color: var(--accent); }
     .container { max-width: 1200px; margin: 0 auto; padding: 40px 20px; }
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; flex-wrap: wrap; gap: 20px; }
     .page-header h2 { font-size: 1.8em; }
-    .page-header p { color: #888; margin-top: 5px; }
-    .create-btn { background: #4ade80; color: #000; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+    .page-header p { color: var(--text-muted); margin-top: 5px; }
+    .create-btn { background: var(--accent-green); color: #000; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; }
     .create-btn:hover { background: #22c55e; }
     .collections-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
-    .collection-card { background: #1a1a1a; border-radius: 12px; overflow: hidden; transition: transform 0.2s; cursor: pointer; }
-    .collection-card:hover { transform: translateY(-4px); }
-    .collection-cover { height: 160px; background: linear-gradient(135deg, #1a2e1a, #1a1a2e); display: flex; align-items: center; justify-content: center; position: relative; }
-    .collection-cover .preview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; width: 100%; height: 100%; }
-    .collection-cover .preview-grid img { width: 100%; height: 80px; object-fit: cover; }
+    .collection-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; transition: transform 0.2s, box-shadow 0.2s; cursor: pointer; }
+    .collection-card:hover { transform: translateY(-4px); box-shadow: 0 8px 25px var(--shadow); }
+    .collection-cover { height: 160px; background: linear-gradient(135deg, var(--bg-button), var(--bg-card)); display: flex; align-items: center; justify-content: center; }
     .collection-cover .icon { font-size: 3em; opacity: 0.3; }
     .collection-info { padding: 16px; }
-    .collection-info h3 { margin-bottom: 8px; font-size: 1.1em; }
-    .collection-info .meta { display: flex; justify-content: space-between; color: #888; font-size: 0.85em; }
-    .collection-info .private-badge { color: #888; font-size: 0.8em; }
+    .collection-info h3 { margin-bottom: 8px; font-size: 1.1em; color: var(--text-primary); }
+    .collection-info .meta { display: flex; justify-content: space-between; color: var(--text-muted); font-size: 0.85em; }
     .collection-actions { display: flex; gap: 8px; margin-top: 12px; }
-    .collection-actions button { flex: 1; background: transparent; border: 1px solid #444; color: #888; padding: 8px; border-radius: 6px; cursor: pointer; font-size: 0.85em; }
-    .collection-actions button:hover { border-color: #666; color: white; }
+    .collection-actions button { flex: 1; background: transparent; border: 1px solid var(--border); color: var(--text-muted); padding: 8px; border-radius: 6px; cursor: pointer; font-size: 0.85em; }
+    .collection-actions button:hover { border-color: var(--accent); color: var(--text-primary); }
     .collection-actions button.delete:hover { border-color: #ef4444; color: #ef4444; }
-    .empty-state { text-align: center; padding: 80px 20px; color: #666; }
-    .empty-state h3 { font-size: 1.5em; margin-bottom: 12px; color: #888; }
-    .empty-state p { margin-bottom: 24px; }
+    .empty-state { text-align: center; padding: 80px 20px; color: var(--text-muted); }
+    .empty-state h3 { font-size: 1.5em; margin-bottom: 12px; }
     .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center; }
     .modal.active { display: flex; }
-    .modal-content { background: #1a1a1a; border-radius: 16px; padding: 30px; max-width: 400px; width: 90%; }
-    .modal-content h3 { margin-bottom: 20px; }
-    .modal-content input { width: 100%; background: #0f0f0f; border: 1px solid #333; border-radius: 8px; padding: 12px; color: white; margin-bottom: 16px; }
-    .modal-content input:focus { outline: none; border-color: #4ade80; }
-    .modal-content .checkbox-group { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; color: #888; }
+    .modal-content { background: var(--bg-card); border-radius: 16px; padding: 30px; max-width: 400px; width: 90%; }
+    .modal-content h3 { margin-bottom: 20px; color: var(--text-primary); }
+    .modal-content input { width: 100%; background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px; padding: 12px; color: var(--text-primary); margin-bottom: 16px; }
+    .modal-content input:focus { outline: none; border-color: var(--accent-green); }
+    .modal-content .checkbox-group { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; color: var(--text-muted); }
     .modal-content .checkbox-group input { width: auto; margin: 0; }
     .modal-actions { display: flex; gap: 12px; }
     .modal-actions button { flex: 1; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: 500; }
-    .modal-actions .cancel { background: transparent; border: 1px solid #444; color: #888; }
-    .modal-actions .confirm { background: #4ade80; border: none; color: #000; }
-    .loading { text-align: center; padding: 40px; color: #888; }
-    .premium-badge { display: inline-block; background: linear-gradient(135deg, #f59e0b, #d97706); color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.7em; margin-left: 8px; }
+    .modal-actions .cancel { background: transparent; border: 1px solid var(--border); color: var(--text-muted); }
+    .modal-actions .confirm { background: var(--accent-green); border: none; color: #000; }
+    .loading { text-align: center; padding: 40px; color: var(--text-muted); }
   </style>
 </head>
 <body>
-  <header class="header">
+  <div class="header">
     <a href="/lurl/"><img src="/lurl/files/LOGO.png" alt="Lurl" class="logo"></a>
+    <div class="header-actions">
+      <button class="theme-toggle" onclick="toggleTheme()" title="切換主題">🌙</button>
+    </div>
     <nav>
+      <a href="/lurl/">首頁</a>
       <a href="/lurl/browse">瀏覽</a>
-      <a href="/lurl/member/collections" class="active">收藏</a>
-      <a href="/lurl/member/history">歷史</a>
-      <a href="/lurl/member/quota">額度</a>
-      <a href="/lurl/member/profile">個人</a>
-      <div class="user-info">
-        <span class="nickname">${user.nickname || user.email.split('@')[0]}</span>
-        <span class="logout-btn" onclick="logout()">登出</span>
-      </div>
+      <a href="/lurl/member/collections" class="active">⭐ 收藏</a>
+      <a href="/lurl/admin">管理</a>
     </nav>
-  </header>
+  </div>
 
   <main class="container">
     <div class="page-header">
       <div>
-        <h2>⭐ 我的收藏 ${user.tier !== 'premium' ? '<span class="premium-badge">老司機專屬</span>' : ''}</h2>
+        <h2>⭐ 我的收藏 ${user.tier !== 'premium' && user.tier !== 'admin' ? '<span class="premium-badge">老司機專屬</span>' : ''}</h2>
         <p id="collectionCount">載入中...</p>
       </div>
       <button class="create-btn" onclick="showCreateModal()">+ 新增收藏夾</button>
     </div>
 
-    ${user.tier !== 'premium' ? `
+    ${user.tier !== 'premium' && user.tier !== 'admin' ? `
     <div style="background: linear-gradient(135deg, #1a1a2e, #16213e); border-radius: 12px; padding: 24px; margin-bottom: 30px; text-align: center;">
       <h3 style="margin-bottom: 12px;">🔒 收藏功能為老司機專屬</h3>
       <p style="color: #888; margin-bottom: 16px;">升級到老司機會員即可解鎖收藏功能，永久保存你喜歡的內容</p>
@@ -4578,7 +4637,7 @@ function memberCollectionsPage(user) {
   </div>
 
   <script>
-    const isPremium = ${user.tier === 'premium'};
+    const isPremium = ${user.tier === 'premium' || user.tier === 'admin'};
     let collections = [];
     let editingId = null;
 
@@ -4590,11 +4649,11 @@ function memberCollectionsPage(user) {
       }
 
       try {
-        const res = await fetch('/lurl/api/collections');
+        const res = await fetch('/lurl/api/collections', { credentials: 'include' });
         const data = await res.json();
 
         if (!data.ok) {
-          document.getElementById('collectionsGrid').innerHTML = '<div class="empty-state"><h3>載入失敗</h3></div>';
+          document.getElementById('collectionsGrid').innerHTML = '<div class="empty-state"><h3>載入失敗: ' + (data.error || '未知錯誤') + '</h3></div>';
           return;
         }
 
@@ -4697,7 +4756,7 @@ function memberCollectionsPage(user) {
       if (!confirm('確定要刪除這個收藏夾？收藏的內容不會被刪除。')) return;
 
       try {
-        const res = await fetch('/lurl/api/collections/' + id, { method: 'DELETE' });
+        const res = await fetch('/lurl/api/collections/' + id, { method: 'DELETE', credentials: 'include' });
         const data = await res.json();
         if (data.ok) {
           loadCollections();
@@ -4713,6 +4772,22 @@ function memberCollectionsPage(user) {
       await fetch('/lurl/api/auth/logout', { method: 'POST' });
       window.location.href = '/lurl/';
     }
+
+    // 主題切換
+    function toggleTheme() {
+      const html = document.documentElement;
+      const isDark = html.getAttribute('data-theme') === 'dark';
+      html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+      localStorage.setItem('lurl-theme', isDark ? 'light' : 'dark');
+      document.querySelector('.theme-toggle').textContent = isDark ? '🌙' : '☀️';
+    }
+    (function() {
+      const saved = localStorage.getItem('lurl-theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const theme = saved || (prefersDark ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', theme);
+      document.querySelector('.theme-toggle').textContent = theme === 'dark' ? '☀️' : '🌙';
+    })();
 
     loadCollections();
   </script>
@@ -4731,59 +4806,69 @@ function collectionDetailPage(user, collection) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${collection.name} - 我的收藏 - Lurl</title>
   <style>
+    :root {
+      --bg-body: #f8fafc; --bg-header: #ffffff; --bg-card: #ffffff; --bg-input: #f1f5f9;
+      --bg-button: #e2e8f0; --bg-button-hover: #cbd5e1;
+      --text-primary: #1f2937; --text-secondary: #374151; --text-muted: #64748b;
+      --accent: #5BB4D4; --accent-hover: #4AABCC; --accent-green: #4ade80;
+      --border: #e2e8f0; --shadow: rgba(0,0,0,0.08);
+    }
+    [data-theme="dark"] {
+      --bg-body: #0a0a0a; --bg-header: #111111; --bg-card: #161616; --bg-input: #1a1a1a;
+      --bg-button: #2a2a2a; --bg-button-hover: #3a3a3a;
+      --text-primary: #f0f0f0; --text-secondary: #d0d0d0; --text-muted: #888888;
+      --accent: #5BB4D4; --accent-hover: #7EC8E3; --accent-green: #4ade80;
+      --border: #2a2a2a; --shadow: rgba(0,0,0,0.5);
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: white; min-height: 100vh; }
-    .header { background: #1a1a2e; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg-body); color: var(--text-primary); min-height: 100vh; transition: background 0.3s, color 0.3s; }
+    .header { background: var(--bg-header); padding: 15px 20px; display: flex; align-items: center; box-shadow: 0 1px 3px var(--shadow); }
     .header .logo { height: 36px; width: auto; }
+    .header-actions { display: flex; gap: 8px; margin-left: auto; margin-right: 20px; }
+    .header-actions button { background: var(--bg-button); border: none; padding: 8px 12px; border-radius: 8px; font-size: 1.2em; cursor: pointer; transition: all 0.2s; }
+    .header-actions button:hover { background: var(--bg-button-hover); }
     .header nav { display: flex; gap: 20px; align-items: center; }
-    .header nav a { color: #aaa; text-decoration: none; font-size: 0.95em; }
-    .header nav a:hover { color: white; }
-    .header nav a.active { color: white; }
-    .header .user-info { display: flex; align-items: center; gap: 12px; }
-    .header .user-info .nickname { color: #4ade80; font-weight: 500; }
-    .header .logout-btn { color: #888; font-size: 0.85em; cursor: pointer; }
-    .header .logout-btn:hover { color: #ef4444; }
+    .header nav a { color: var(--text-muted); text-decoration: none; font-size: 0.95em; }
+    .header nav a:hover, .header nav a.active { color: var(--accent); }
     .container { max-width: 1200px; margin: 0 auto; padding: 40px 20px; }
-    .back-link { display: inline-block; margin-bottom: 20px; color: #888; text-decoration: none; }
-    .back-link:hover { color: white; }
+    .back-link { display: inline-block; margin-bottom: 20px; color: var(--text-muted); text-decoration: none; }
+    .back-link:hover { color: var(--accent); }
     .page-header { margin-bottom: 30px; }
-    .page-header h2 { font-size: 1.8em; display: flex; align-items: center; gap: 12px; }
-    .page-header .private-badge { color: #888; font-size: 0.5em; }
-    .page-header p { color: #888; margin-top: 8px; }
+    .page-header h2 { font-size: 1.8em; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .page-header .private-badge { color: var(--text-muted); font-size: 0.5em; }
+    .page-header p { color: var(--text-muted); margin-top: 8px; }
     .items-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
-    .item-card { background: #1a1a1a; border-radius: 12px; overflow: hidden; transition: transform 0.2s; }
-    .item-card:hover { transform: translateY(-4px); }
+    .item-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; transition: transform 0.2s, box-shadow 0.2s; }
+    .item-card:hover { transform: translateY(-4px); box-shadow: 0 8px 25px var(--shadow); }
     .item-card a { text-decoration: none; color: inherit; }
-    .item-thumb { width: 100%; aspect-ratio: 16/9; object-fit: cover; background: #333; }
+    .item-thumb { width: 100%; aspect-ratio: 16/9; object-fit: cover; background: var(--bg-button); }
     .item-info { padding: 12px; }
-    .item-info h4 { font-size: 0.95em; margin-bottom: 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-    .item-info .meta { display: flex; justify-content: space-between; color: #888; font-size: 0.8em; }
-    .item-remove { background: transparent; border: 1px solid #444; color: #888; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8em; margin-top: 8px; width: 100%; }
+    .item-info h4 { font-size: 0.95em; margin-bottom: 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--text-primary); }
+    .item-info .meta { display: flex; justify-content: space-between; color: var(--text-muted); font-size: 0.8em; }
+    .item-remove { background: transparent; border: 1px solid var(--border); color: var(--text-muted); padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8em; margin-top: 8px; width: 100%; }
     .item-remove:hover { border-color: #ef4444; color: #ef4444; }
-    .empty-state { text-align: center; padding: 80px 20px; color: #666; grid-column: 1/-1; }
-    .empty-state h3 { font-size: 1.5em; margin-bottom: 12px; color: #888; }
+    .empty-state { text-align: center; padding: 80px 20px; color: var(--text-muted); grid-column: 1/-1; }
+    .empty-state h3 { font-size: 1.5em; margin-bottom: 12px; }
     .pagination { display: flex; justify-content: center; gap: 8px; margin-top: 30px; }
-    .pagination button { background: #1a1a1a; border: none; color: white; padding: 10px 16px; border-radius: 6px; cursor: pointer; }
-    .pagination button:hover { background: #333; }
+    .pagination button { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); padding: 10px 16px; border-radius: 6px; cursor: pointer; }
+    .pagination button:hover { background: var(--bg-button-hover); }
     .pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
-    .loading { text-align: center; padding: 40px; color: #888; grid-column: 1/-1; }
+    .loading { text-align: center; padding: 40px; color: var(--text-muted); grid-column: 1/-1; }
   </style>
 </head>
 <body>
-  <header class="header">
+  <div class="header">
     <a href="/lurl/"><img src="/lurl/files/LOGO.png" alt="Lurl" class="logo"></a>
+    <div class="header-actions">
+      <button class="theme-toggle" onclick="toggleTheme()" title="切換主題">🌙</button>
+    </div>
     <nav>
+      <a href="/lurl/">首頁</a>
       <a href="/lurl/browse">瀏覽</a>
-      <a href="/lurl/member/collections" class="active">收藏</a>
-      <a href="/lurl/member/history">歷史</a>
-      <a href="/lurl/member/quota">額度</a>
-      <a href="/lurl/member/profile">個人</a>
-      <div class="user-info">
-        <span class="nickname">${user.nickname || user.email.split('@')[0]}</span>
-        <span class="logout-btn" onclick="logout()">登出</span>
-      </div>
+      <a href="/lurl/member/collections" class="active">⭐ 收藏</a>
+      <a href="/lurl/admin">管理</a>
     </nav>
-  </header>
+  </div>
 
   <main class="container">
     <a href="/lurl/member/collections" class="back-link">← 返回收藏列表</a>
@@ -4799,7 +4884,7 @@ function collectionDetailPage(user, collection) {
 
     <div class="pagination" id="pagination" style="display:none;">
       <button id="prevBtn" onclick="loadPage(currentPage - 1)">上一頁</button>
-      <span id="pageInfo" style="padding: 10px 16px; color: #888;"></span>
+      <span id="pageInfo" style="padding: 10px 16px; color: var(--text-muted);"></span>
       <button id="nextBtn" onclick="loadPage(currentPage + 1)">下一頁</button>
     </div>
   </main>
@@ -4810,16 +4895,24 @@ function collectionDetailPage(user, collection) {
     const pageSize = 20;
     let totalCount = 0;
 
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute('data-theme');
+      const next = current === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('lurl-theme', next);
+      document.querySelector('.theme-toggle').textContent = next === 'dark' ? '☀️' : '🌙';
+    }
+
     async function loadItems(page = 1) {
       currentPage = page;
       const offset = (page - 1) * pageSize;
 
       try {
-        const res = await fetch('/lurl/api/collections/' + collectionId + '/items?limit=' + pageSize + '&offset=' + offset);
+        const res = await fetch('/lurl/api/collections/' + collectionId + '/items?limit=' + pageSize + '&offset=' + offset, { credentials: 'include' });
         const data = await res.json();
 
         if (!data.ok) {
-          document.getElementById('itemsGrid').innerHTML = '<div class="empty-state"><h3>載入失敗</h3></div>';
+          document.getElementById('itemsGrid').innerHTML = '<div class="empty-state"><h3>載入失敗: ' + (data.error || '未知錯誤') + '</h3></div>';
           return;
         }
 
@@ -4878,7 +4971,7 @@ function collectionDetailPage(user, collection) {
       if (!confirm('確定要從收藏夾移除？')) return;
 
       try {
-        const res = await fetch('/lurl/api/collections/' + collectionId + '/items/' + recordId, { method: 'DELETE' });
+        const res = await fetch('/lurl/api/collections/' + collectionId + '/items/' + recordId, { method: 'DELETE', credentials: 'include' });
         const data = await res.json();
         if (data.ok) {
           loadItems(currentPage);
@@ -4890,10 +4983,14 @@ function collectionDetailPage(user, collection) {
       }
     }
 
-    async function logout() {
-      await fetch('/lurl/api/auth/logout', { method: 'POST' });
-      window.location.href = '/lurl/';
-    }
+    // Initialize theme
+    (function() {
+      const saved = localStorage.getItem('lurl-theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const theme = saved || (prefersDark ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', theme);
+      document.querySelector('.theme-toggle').textContent = theme === 'dark' ? '☀️' : '🌙';
+    })();
 
     loadItems(1);
   </script>
@@ -5150,6 +5247,30 @@ function browsePage() {
     .card.blocked { opacity: 0.5; }
     .card.blocked .card-thumb { filter: grayscale(1); }
 
+    /* Favorite button */
+    .btn-favorite {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      z-index: 15;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(0,0,0,0.5);
+      color: #ccc;
+      font-size: 18px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+    .btn-favorite:hover { background: rgba(0,0,0,0.7); color: #ffc107; transform: scale(1.1); }
+    .btn-favorite.active { background: rgba(255,193,7,0.9); color: #000; }
+    .btn-favorite.active:hover { background: #ffc107; }
+
     /* Card Tags */
     .card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
     .card-tags .tag {
@@ -5391,6 +5512,7 @@ function browsePage() {
     let isLoading = false;
     let selectedFilterTags = [];  // 篩選用的標籤
     let expandedFilterTag = null; // 展開的篩選主標籤
+    let favoritesMap = {};        // 收藏狀態 { recordId: true/false }
 
     // ===== 滾動位置記憶 =====
     const SCROLL_KEY = 'lurl_browse_scroll';
@@ -5773,6 +5895,7 @@ function browsePage() {
 
       renderGrid();
       renderPagination();
+      loadFavorites();  // 載入收藏狀態
 
       if (shouldRestoreScroll) {
         shouldRestoreScroll = false;
@@ -5850,6 +5973,7 @@ function browsePage() {
                   ? \`<img src="/lurl/files/\${r.thumbnailPath}" alt="\${getTitle(r.title)}" onload="this.classList.add('loaded')" onerror="this.parentElement.innerHTML='<div class=play-icon></div>'"><div class="play-icon" style="position:absolute;"></div>\`
                   : '<div class="play-icon"></div>'))
               : '<span style="font-size:24px;color:#666">Pending</span>'}
+            <button class="btn-favorite \${favoritesMap[r.id] ? 'active' : ''}" onclick="event.stopPropagation();toggleFavorite('\${r.id}')" title="收藏">\${favoritesMap[r.id] ? '⭐' : '☆'}</button>
           </div>
           <div class="card-info">
             <div class="card-title">\${getTitle(r.title)}</div>
@@ -5944,6 +6068,47 @@ function browsePage() {
         }
       } catch (e) {
         showToast('操作失敗');
+      }
+    }
+
+    // 快速收藏切換
+    async function toggleFavorite(id) {
+      try {
+        const res = await fetch('/lurl/api/collections/quick-add', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recordId: id })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          favoritesMap[id] = data.isFavorite;
+          renderGrid();
+          showToast(data.isFavorite ? '⭐ 已收藏' : '已取消收藏');
+        } else if (data.error === '收藏功能為老司機專屬') {
+          showToast('🔒 收藏功能為老司機專屬');
+        } else if (data.error === '未登入') {
+          showToast('請先登入');
+        } else {
+          showToast(data.error || '操作失敗');
+        }
+      } catch (e) {
+        showToast('操作失敗');
+      }
+    }
+
+    // 載入收藏狀態
+    async function loadFavorites() {
+      if (allRecords.length === 0) return;
+      try {
+        const recordIds = allRecords.map(r => r.id).join(',');
+        const res = await fetch('/lurl/api/collections/status?recordIds=' + encodeURIComponent(recordIds));
+        const data = await res.json();
+        if (data.ok) {
+          favoritesMap = data.favorites || {};
+          renderGrid();
+        }
+      } catch (e) {
+        console.warn('載入收藏狀態失敗');
       }
     }
 
@@ -6217,12 +6382,13 @@ function viewPage(record, fileExists, user = null) {
     .header .logo-title { display: flex; align-items: center; gap: 10px; }
     .header .logo { height: 36px; width: auto; }
     .header h1 { font-size: 1.3em; }
-    .header .header-right { display: flex; align-items: center; gap: 12px; }
+    .header-actions { display: flex; gap: 8px; margin-left: auto; margin-right: 20px; }
+    .header-actions button { background: var(--bg-button); border: none; padding: 8px 12px; border-radius: 8px; font-size: 1.2em; cursor: pointer; transition: all 0.2s; }
+    .header-actions button:hover { background: var(--bg-button-hover); }
     .header nav { display: flex; gap: 20px; }
     .header nav a { color: var(--text-muted); text-decoration: none; font-size: 0.95em; }
     .header nav a:hover { color: var(--accent); }
-    .theme-toggle { background: var(--bg-button); border: none; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; font-size: 1.1em; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
-    .theme-toggle:hover { background: var(--bg-button-hover); }
+    .theme-toggle { font-size: 1.1em !important; }
     .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
     .media-container { background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 20px; position: relative; min-height: 200px; }
     .media-container video { width: 100%; max-height: 70vh; object-fit: contain; display: block; aspect-ratio: 16/9; background: #000; }
@@ -6441,15 +6607,15 @@ function viewPage(record, fileExists, user = null) {
     <a href="/lurl/" class="logo-title">
       <img src="/lurl/files/LOGO.png" alt="Lurl" class="logo">
     </a>
+    <div class="header-actions">
+      <button class="theme-toggle" onclick="toggleTheme()" title="切換主題">🌙</button>
+    </div>
     <nav>
       <a href="/lurl/">首頁</a>
       <a href="/lurl/browse">瀏覽</a>
       <a href="/lurl/member/collections">⭐ 收藏</a>
       <a href="/lurl/admin">管理</a>
     </nav>
-    <div class="header-right">
-      <button class="theme-toggle" onclick="toggleTheme()" title="切換主題">🌙</button>
-    </div>
   </div>
   <div class="container">
     <a href="javascript:history.back()" class="back-link">← 返回</a>
@@ -7214,9 +7380,12 @@ module.exports = {
 
     // GET /member/quota - 會員額度頁面
     if (req.method === 'GET' && urlPath === '/member/quota') {
-      const user = getMemberFromRequest(req);
+      let user = getMemberFromRequest(req);
+      if (!user && isAdminAuthenticated(req)) {
+        user = { id: 'admin', tier: 'admin', nickname: '管理員', email: 'admin@system' };
+      }
       if (!user) {
-        res.writeHead(302, { 'Location': '/lurl/member/login?redirect=/lurl/member/quota' });
+        res.writeHead(302, { 'Location': '/lurl/login?redirect=/lurl/member/quota' });
         res.end();
         return;
       }
@@ -7290,9 +7459,12 @@ module.exports = {
 
     // GET /member/history - 觀看歷史頁面
     if (req.method === 'GET' && urlPath === '/member/history') {
-      const user = getMemberFromRequest(req);
+      let user = getMemberFromRequest(req);
+      if (!user && isAdminAuthenticated(req)) {
+        user = { id: 'admin', tier: 'admin', nickname: '管理員', email: 'admin@system' };
+      }
       if (!user) {
-        res.writeHead(302, { 'Location': '/lurl/member/login?redirect=/lurl/member/history' });
+        res.writeHead(302, { 'Location': '/lurl/login?redirect=/lurl/member/history' });
         res.end();
         return;
       }
@@ -7384,9 +7556,12 @@ module.exports = {
 
     // GET /member/profile - 個人資料頁面
     if (req.method === 'GET' && urlPath === '/member/profile') {
-      const user = getMemberFromRequest(req);
+      let user = getMemberFromRequest(req);
+      if (!user && isAdminAuthenticated(req)) {
+        user = { id: 'admin', tier: 'admin', nickname: '管理員', email: 'admin@system' };
+      }
       if (!user) {
-        res.writeHead(302, { 'Location': '/lurl/member/login?redirect=/lurl/member/profile' });
+        res.writeHead(302, { 'Location': '/lurl/login?redirect=/lurl/member/profile' });
         res.end();
         return;
       }
@@ -7505,10 +7680,11 @@ module.exports = {
       let user = getMemberFromRequest(req);
       // 支援 admin 登入
       if (!user && isAdminAuthenticated(req)) {
-        user = { id: 'admin', tier: 'admin', nickname: '管理員' };
+        user = { id: 'admin', tier: 'admin', nickname: '管理員', email: 'admin@system' };
       }
       if (!user) {
-        res.writeHead(302, { 'Location': '/lurl/member/login?redirect=/lurl/member/collections' });
+        // 統一導向 admin 登入頁
+        res.writeHead(302, { 'Location': '/lurl/login?redirect=/lurl/member/collections' });
         res.end();
         return;
       }
@@ -7520,10 +7696,10 @@ module.exports = {
     if (req.method === 'GET' && urlPath.startsWith('/member/collections/') && !urlPath.includes('/api/')) {
       let user = getMemberFromRequest(req);
       if (!user && isAdminAuthenticated(req)) {
-        user = { id: 'admin', tier: 'admin', nickname: '管理員' };
+        user = { id: 'admin', tier: 'admin', nickname: '管理員', email: 'admin@system' };
       }
       if (!user) {
-        res.writeHead(302, { 'Location': '/lurl/member/login?redirect=/lurl' + urlPath });
+        res.writeHead(302, { 'Location': '/lurl/login?redirect=/lurl' + urlPath });
         res.end();
         return;
       }
@@ -7541,12 +7717,110 @@ module.exports = {
       return;
     }
 
+    // GET /api/collections/status - 批量查詢收藏狀態
+    if (req.method === 'GET' && urlPath === '/api/collections/status') {
+      let user = getMemberFromRequest(req);
+      if (!user && isAdminAuthenticated(req)) {
+        user = { id: 'admin', tier: 'admin', nickname: '管理員', email: 'admin@system' };
+      }
+      if (!user) {
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ ok: true, favorites: {} }));
+        return;
+      }
+
+      if (user.tier !== 'premium' && user.tier !== 'admin') {
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ ok: true, favorites: {} }));
+        return;
+      }
+
+      const recordIds = (query.recordIds || '').split(',').filter(Boolean);
+      const favorites = {};
+
+      // 取得用戶的所有收藏項目
+      const collections = lurlDb.getCollections(user.id);
+      for (const c of collections) {
+        const items = lurlDb.getCollectionItems(c.id);
+        for (const item of items) {
+          if (recordIds.includes(item.recordId)) {
+            favorites[item.recordId] = true;
+          }
+        }
+      }
+
+      res.writeHead(200, corsHeaders());
+      res.end(JSON.stringify({ ok: true, favorites }));
+      return;
+    }
+
+    // POST /api/collections/quick-add - 快速加入預設收藏
+    if (req.method === 'POST' && urlPath === '/api/collections/quick-add') {
+      let user = getMemberFromRequest(req);
+      if (!user && isAdminAuthenticated(req)) {
+        user = { id: 'admin', tier: 'admin', nickname: '管理員', email: 'admin@system' };
+      }
+      if (!user) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '未登入' }));
+        return;
+      }
+
+      if (user.tier !== 'premium' && user.tier !== 'admin') {
+        res.writeHead(403, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '收藏功能為老司機專屬' }));
+        return;
+      }
+
+      try {
+        const body = await parseBody(req);
+        const { recordId } = body;
+
+        if (!recordId) {
+          res.writeHead(400, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: '缺少 recordId' }));
+          return;
+        }
+
+        // 找到或建立預設收藏夾
+        let collections = lurlDb.getCollections(user.id);
+        let defaultCollection = collections.find(c => c.name === '預設收藏');
+        if (!defaultCollection) {
+          defaultCollection = lurlDb.createCollection(user.id, '預設收藏', true);
+        }
+
+        // 檢查是否已收藏
+        const isInAny = collections.some(c => lurlDb.isInCollection(c.id, recordId));
+
+        if (isInAny) {
+          // 已收藏，從所有收藏夾移除
+          for (const c of collections) {
+            if (lurlDb.isInCollection(c.id, recordId)) {
+              lurlDb.removeFromCollection(c.id, recordId);
+            }
+          }
+          res.writeHead(200, corsHeaders());
+          res.end(JSON.stringify({ ok: true, action: 'removed', isFavorite: false }));
+        } else {
+          // 未收藏，加入預設收藏夾
+          lurlDb.addToCollection(defaultCollection.id, recordId);
+          res.writeHead(200, corsHeaders());
+          res.end(JSON.stringify({ ok: true, action: 'added', isFavorite: true }));
+        }
+      } catch (err) {
+        console.error('[collections] 快速收藏失敗:', err);
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '操作失敗' }));
+      }
+      return;
+    }
+
     // GET /api/collections - 取得收藏夾列表
     if (req.method === 'GET' && urlPath === '/api/collections') {
       let user = getMemberFromRequest(req);
       // 支援 admin 登入使用收藏功能
       if (!user && isAdminAuthenticated(req)) {
-        user = { id: 'admin', tier: 'admin' };
+        user = { id: 'admin', tier: 'admin', nickname: '管理員', email: 'admin@system' };
       }
       if (!user) {
         res.writeHead(401, corsHeaders());
@@ -7579,7 +7853,7 @@ module.exports = {
     if (req.method === 'POST' && urlPath === '/api/collections') {
       let user = getMemberFromRequest(req);
       if (!user && isAdminAuthenticated(req)) {
-        user = { id: 'admin', tier: 'admin' };
+        user = { id: 'admin', tier: 'admin', nickname: '管理員', email: 'admin@system' };
       }
       if (!user) {
         res.writeHead(401, corsHeaders());
@@ -7673,7 +7947,10 @@ module.exports = {
 
     // GET /api/collections/:id/items - 取得收藏夾項目
     if (req.method === 'GET' && urlPath.match(/^\/api\/collections\/[^/]+\/items$/)) {
-      const user = getMemberFromRequest(req);
+      let user = getMemberFromRequest(req);
+      if (!user && isAdminAuthenticated(req)) {
+        user = { id: 'admin', tier: 'admin', nickname: '管理員', email: 'admin@system' };
+      }
       if (!user) {
         res.writeHead(401, corsHeaders());
         res.end(JSON.stringify({ ok: false, error: '未登入' }));
@@ -7683,7 +7960,8 @@ module.exports = {
       const collectionId = urlPath.split('/')[3];
       const collection = lurlDb.getCollection(collectionId);
 
-      if (!collection || collection.userId !== user.id) {
+      // Admin 可以訪問所有收藏夾
+      if (!collection || (collection.userId !== user.id && user.id !== 'admin')) {
         res.writeHead(404, corsHeaders());
         res.end(JSON.stringify({ ok: false, error: '收藏夾不存在' }));
         return;
@@ -7703,7 +7981,7 @@ module.exports = {
     if (req.method === 'POST' && urlPath.match(/^\/api\/collections\/[^/]+\/items$/)) {
       let user = getMemberFromRequest(req);
       if (!user && isAdminAuthenticated(req)) {
-        user = { id: 'admin', tier: 'admin' };
+        user = { id: 'admin', tier: 'admin', nickname: '管理員', email: 'admin@system' };
       }
       if (!user) {
         res.writeHead(401, corsHeaders());
@@ -7720,7 +7998,8 @@ module.exports = {
       const collectionId = urlPath.split('/')[3];
       const collection = lurlDb.getCollection(collectionId);
 
-      if (!collection || collection.userId !== user.id) {
+      // Admin 可以訪問所有收藏夾
+      if (!collection || (collection.userId !== user.id && user.id !== 'admin')) {
         res.writeHead(404, corsHeaders());
         res.end(JSON.stringify({ ok: false, error: '收藏夾不存在' }));
         return;
@@ -7751,7 +8030,7 @@ module.exports = {
     if (req.method === 'DELETE' && urlPath.match(/^\/api\/collections\/[^/]+\/items\/[^/]+$/)) {
       let user = getMemberFromRequest(req);
       if (!user && isAdminAuthenticated(req)) {
-        user = { id: 'admin', tier: 'admin' };
+        user = { id: 'admin', tier: 'admin', nickname: '管理員', email: 'admin@system' };
       }
       if (!user) {
         res.writeHead(401, corsHeaders());
@@ -7764,7 +8043,8 @@ module.exports = {
       const recordId = parts[5];
       const collection = lurlDb.getCollection(collectionId);
 
-      if (!collection || collection.userId !== user.id) {
+      // Admin 可以訪問所有收藏夾
+      if (!collection || (collection.userId !== user.id && user.id !== 'admin')) {
         res.writeHead(404, corsHeaders());
         res.end(JSON.stringify({ ok: false, error: '收藏夾不存在' }));
         return;
@@ -8453,12 +8733,21 @@ module.exports = {
       const page = parseInt(query.page) || 1;
       const limit = parseInt(query.limit) || 50; // 預設每頁 50 筆
 
-      // 先檢查檔案存在狀態（原始檔或 HLS 版本）
-      records = records.map(r => ({
-        ...r,
-        fileExists: fs.existsSync(path.join(DATA_DIR, r.backupPath)) ||
-                    (r.hlsReady && fs.existsSync(path.join(HLS_DIR, r.id, 'master.m3u8')))
-      }));
+      // 先檢查檔案存在狀態（原始 MP4/MOV 或 HLS 版本）
+      records = records.map(r => {
+        let fileExists = false;
+        if (r.type === 'video') {
+          // 視訊：只檢查 MP4/MOV 或 HLS
+          const ext = r.backupPath ? path.extname(r.backupPath).toLowerCase() : '';
+          const hasLocalFile = ['.mp4', '.mov'].includes(ext) && fs.existsSync(path.join(DATA_DIR, r.backupPath));
+          const hasHLS = r.hlsReady && fs.existsSync(path.join(HLS_DIR, r.id, 'master.m3u8'));
+          fileExists = hasLocalFile || hasHLS;
+        } else {
+          // 圖片：直接檢查 backupPath
+          fileExists = r.backupPath && fs.existsSync(path.join(DATA_DIR, r.backupPath));
+        }
+        return { ...r, fileExists };
+      });
 
       // Blocked filter (預設不顯示封鎖的，除非明確指定)
       const blocked = query.blocked;
@@ -8484,11 +8773,18 @@ module.exports = {
       } else if (type === 'blocked') {
         // 已封鎖的：只顯示 blocked=true (已被上面的 blocked filter 過濾，這裡要重新讀取)
         records = readAllRecords()
-          .map(r => ({
-            ...r,
-            fileExists: fs.existsSync(path.join(DATA_DIR, r.backupPath)) ||
-                        (r.hlsReady && fs.existsSync(path.join(HLS_DIR, r.id, 'master.m3u8')))
-          }))
+          .map(r => {
+            let fileExists = false;
+            if (r.type === 'video') {
+              const ext = r.backupPath ? path.extname(r.backupPath).toLowerCase() : '';
+              const hasLocalFile = ['.mp4', '.mov'].includes(ext) && fs.existsSync(path.join(DATA_DIR, r.backupPath));
+              const hasHLS = r.hlsReady && fs.existsSync(path.join(HLS_DIR, r.id, 'master.m3u8'));
+              fileExists = hasLocalFile || hasHLS;
+            } else {
+              fileExists = r.backupPath && fs.existsSync(path.join(DATA_DIR, r.backupPath));
+            }
+            return { ...r, fileExists };
+          })
           .filter(r => r.blocked);
       } else {
         // 全部/影片/圖片：只顯示已下載的
@@ -8848,12 +9144,22 @@ module.exports = {
 
       try {
         const records = readAllRecords();
-        // 找出有影片檔案但沒縮圖的記錄
+        // 找出有影片檔案但沒縮圖的記錄（支援 MP4/MOV 或 HLS）
         const needThumbnails = records.filter(r => {
           if (r.type !== 'video') return false;
           if (r.thumbnailPath && fs.existsSync(path.join(DATA_DIR, r.thumbnailPath))) return false;
-          const videoPath = path.join(DATA_DIR, r.backupPath);
-          return fs.existsSync(videoPath);
+          // 檢查是否有原始 MP4/MOV
+          if (r.backupPath) {
+            const ext = path.extname(r.backupPath).toLowerCase();
+            if (['.mp4', '.mov'].includes(ext) && fs.existsSync(path.join(DATA_DIR, r.backupPath))) {
+              return true;
+            }
+          }
+          // 檢查是否有 HLS
+          if (r.hlsReady && fs.existsSync(path.join(HLS_DIR, r.id, 'master.m3u8'))) {
+            return true;
+          }
+          return false;
         });
 
         if (needThumbnails.length === 0) {
@@ -8878,7 +9184,25 @@ module.exports = {
             const record = needThumbnails[i];
             console.log(`[lurl] 產生縮圖 ${i + 1}/${needThumbnails.length}: ${record.id}`);
 
-            const videoPath = path.join(DATA_DIR, record.backupPath);
+            // 決定影片來源路徑（優先原始 MP4/MOV，否則用 HLS）
+            let videoPath = null;
+            if (record.backupPath) {
+              const ext = path.extname(record.backupPath).toLowerCase();
+              if (['.mp4', '.mov'].includes(ext) && fs.existsSync(path.join(DATA_DIR, record.backupPath))) {
+                videoPath = path.join(DATA_DIR, record.backupPath);
+              }
+            }
+            if (!videoPath && record.hlsReady) {
+              const hlsPath = path.join(HLS_DIR, record.id, 'master.m3u8');
+              if (fs.existsSync(hlsPath)) {
+                videoPath = hlsPath;
+              }
+            }
+            if (!videoPath) {
+              console.log(`[lurl] 跳過 ${record.id}：找不到影片檔案`);
+              continue;
+            }
+
             const thumbFilename = `${record.id}.jpg`;
             const thumbPath = path.join(THUMBNAILS_DIR, thumbFilename);
 
@@ -8947,11 +9271,19 @@ module.exports = {
 
       try {
         const records = readAllRecords();
-        // 找出下載失敗的記錄 (fileExists === false 或檔案不存在)
+        // 找出下載失敗的記錄 (有 fileUrl 但檔案不存在，視訊要檢查 MP4/MOV 或 HLS)
         const failedRecords = records.filter(r => {
-          if (r.fileExists === false) return true;
-          const filePath = path.join(DATA_DIR, r.backupPath);
-          return !fs.existsSync(filePath);
+          if (!r.fileUrl) return false; // 沒有原始 URL，無法重試
+          if (r.type === 'video') {
+            // 視訊：檢查 MP4/MOV 或 HLS
+            const ext = r.backupPath ? path.extname(r.backupPath).toLowerCase() : '';
+            const hasLocalFile = ['.mp4', '.mov'].includes(ext) && fs.existsSync(path.join(DATA_DIR, r.backupPath));
+            const hasHLS = r.hlsReady && fs.existsSync(path.join(HLS_DIR, r.id, 'master.m3u8'));
+            return !hasLocalFile && !hasHLS;
+          } else {
+            if (!r.backupPath) return true;
+            return !fs.existsSync(path.join(DATA_DIR, r.backupPath));
+          }
         });
 
         if (failedRecords.length === 0) {
@@ -9060,10 +9392,20 @@ module.exports = {
         return;
       }
       const records = readAllRecords();
+      // 有 fileUrl 但檔案不存在的才需要重試（視訊要檢查 MP4/MOV 或 HLS）
       const failedRecords = records.filter(r => {
-        if (r.fileExists === false) return true;
-        const filePath = path.join(DATA_DIR, r.backupPath);
-        return !fs.existsSync(filePath);
+        if (!r.fileUrl) return false; // 沒有原始 URL，無法重試
+        if (r.type === 'video') {
+          // 視訊：檢查 MP4/MOV 或 HLS
+          const ext = r.backupPath ? path.extname(r.backupPath).toLowerCase() : '';
+          const hasLocalFile = ['.mp4', '.mov'].includes(ext) && fs.existsSync(path.join(DATA_DIR, r.backupPath));
+          const hasHLS = r.hlsReady && fs.existsSync(path.join(HLS_DIR, r.id, 'master.m3u8'));
+          return !hasLocalFile && !hasHLS; // 兩者都不存在才需要重試
+        } else {
+          // 圖片：檢查 backupPath
+          if (!r.backupPath) return true;
+          return !fs.existsSync(path.join(DATA_DIR, r.backupPath));
+        }
       });
       res.writeHead(200, corsHeaders());
       res.end(JSON.stringify({
@@ -9204,6 +9546,475 @@ module.exports = {
         nonWebpImages,
         canOptimize: missingThumbnails > 0 || nonWebpImages > 0
       }));
+      return;
+    }
+
+    // ==================== 維護系統 API ====================
+
+    // GET /api/maintenance/status - 取得維護系統狀態
+    if (req.method === 'GET' && urlPath === '/api/maintenance/status') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '請先登入' }));
+        return;
+      }
+
+      try {
+        const scheduler = initMaintenanceScheduler();
+        const status = await scheduler.getStatus();
+
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ ok: true, ...status }));
+      } catch (err) {
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // POST /api/maintenance/run - 執行所有維護策略
+    if (req.method === 'POST' && urlPath === '/api/maintenance/run') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '請先登入' }));
+        return;
+      }
+
+      try {
+        const scheduler = initMaintenanceScheduler();
+
+        if (scheduler.isRunning) {
+          res.writeHead(409, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: '維護任務執行中', currentTask: scheduler.currentTask }));
+          return;
+        }
+
+        // 非同步執行
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ ok: true, message: '維護任務已開始執行' }));
+
+        scheduler.runAll().catch(err => {
+          console.error('[Maintenance] 執行失敗:', err);
+        });
+      } catch (err) {
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // POST /api/maintenance/run/:strategy - 執行特定策略
+    if (req.method === 'POST' && urlPath.startsWith('/api/maintenance/run/')) {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '請先登入' }));
+        return;
+      }
+
+      const strategyName = urlPath.replace('/api/maintenance/run/', '');
+
+      try {
+        const scheduler = initMaintenanceScheduler();
+
+        if (scheduler.isRunning) {
+          res.writeHead(409, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: '維護任務執行中', currentTask: scheduler.currentTask }));
+          return;
+        }
+
+        // 非同步執行
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ ok: true, message: `策略 ${strategyName} 已開始執行` }));
+
+        scheduler.runOne(strategyName).catch(err => {
+          console.error(`[Maintenance] 策略 ${strategyName} 執行失敗:`, err);
+        });
+      } catch (err) {
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // GET /api/maintenance/config - 取得維護配置
+    if (req.method === 'GET' && urlPath === '/api/maintenance/config') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '請先登入' }));
+        return;
+      }
+
+      try {
+        const scheduler = initMaintenanceScheduler();
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ ok: true, config: scheduler.config }));
+      } catch (err) {
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // POST /api/maintenance/config - 更新維護配置
+    if (req.method === 'POST' && urlPath === '/api/maintenance/config') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '請先登入' }));
+        return;
+      }
+
+      try {
+        const body = await parseBody(req);
+        const scheduler = initMaintenanceScheduler();
+        const newConfig = scheduler.updateConfig(body);
+
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ ok: true, config: newConfig }));
+      } catch (err) {
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // GET /api/maintenance/history - 取得維護歷史
+    if (req.method === 'GET' && urlPath === '/api/maintenance/history') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '請先登入' }));
+        return;
+      }
+
+      try {
+        const scheduler = initMaintenanceScheduler();
+        const limit = parseInt(query.limit) || 20;
+        const history = scheduler.getHistory(limit);
+
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ ok: true, history }));
+      } catch (err) {
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // POST /api/maintenance/auto/start - 啟動自動排程
+    if (req.method === 'POST' && urlPath === '/api/maintenance/auto/start') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '請先登入' }));
+        return;
+      }
+
+      try {
+        const scheduler = initMaintenanceScheduler();
+        scheduler.startAutoRun();
+
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({
+          ok: true,
+          message: '自動排程已啟動',
+          nextRun: scheduler.getNextRunTime(),
+          interval: scheduler.config.runInterval
+        }));
+      } catch (err) {
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // POST /api/maintenance/auto/stop - 停止自動排程
+    if (req.method === 'POST' && urlPath === '/api/maintenance/auto/stop') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '請先登入' }));
+        return;
+      }
+
+      try {
+        const scheduler = initMaintenanceScheduler();
+        scheduler.stopAutoRun();
+
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ ok: true, message: '自動排程已停止' }));
+      } catch (err) {
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // GET /api/maintenance/analyze - 取得詳細分析（使用 RecordChecker）
+    if (req.method === 'GET' && urlPath === '/api/maintenance/analyze') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '請先登入' }));
+        return;
+      }
+
+      try {
+        const records = readAllRecords();
+        const analysis = recordChecker.analyzeRecords(records);
+
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({
+          ok: true,
+          total: analysis.total,
+          videos: analysis.videos,
+          images: analysis.images,
+          needsDownload: analysis.needsDownload.length,
+          needsThumbnail: analysis.needsThumbnail.length,
+          needsPreview: analysis.needsPreview.length,
+          needsHLS: analysis.needsHLS.length,
+          canCleanup: analysis.canCleanup.length,
+          missingFiles: analysis.missingFiles.length
+        }));
+      } catch (err) {
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // GET /api/maintenance/status-counts - 取得狀態統計（快速，使用資料庫索引）
+    if (req.method === 'GET' && urlPath === '/api/maintenance/status-counts') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '請先登入' }));
+        return;
+      }
+
+      try {
+        const counts = lurlDb.getStatusCounts();
+        const records = readAllRecords();
+        const statusAnalysis = recordChecker.analyzeRecordsByStatus(records);
+
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({
+          ok: true,
+          counts,
+          pending: statusAnalysis.pending,
+          total: records.length,
+          videos: statusAnalysis.videos,
+          images: statusAnalysis.images,
+        }));
+      } catch (err) {
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // POST /api/maintenance/sync - 同步狀態與檔案系統
+    if (req.method === 'POST' && urlPath === '/api/maintenance/sync') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '請先登入' }));
+        return;
+      }
+
+      try {
+        const body = await parseBody(req);
+        const { dryRun = false } = body;
+
+        const records = readAllRecords();
+        const result = recordChecker.syncAllStatuses(
+          records,
+          (id, updates) => lurlDb.updateRecord(id, updates),
+          { dryRun }
+        );
+
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({
+          ok: true,
+          ...result,
+          message: dryRun ? '模擬同步完成' : '狀態同步完成',
+        }));
+      } catch (err) {
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // POST /api/maintenance/migrate - 執行狀態遷移（從現有資料設定初始狀態）
+    if (req.method === 'POST' && urlPath === '/api/maintenance/migrate') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '請先登入' }));
+        return;
+      }
+
+      try {
+        const body = await parseBody(req);
+        const { dryRun = false, force = false } = body;
+
+        const result = lurlDb.migrateRecordStatuses(recordChecker, { dryRun, force });
+
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({
+          ok: true,
+          ...result,
+          message: dryRun ? '模擬遷移完成' : '狀態遷移完成',
+        }));
+      } catch (err) {
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // GET /api/records/by-status - 按狀態查詢記錄
+    if (req.method === 'GET' && urlPath === '/api/records/by-status') {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '請先登入' }));
+        return;
+      }
+
+      try {
+        const url = new URL(req.url, `http://${req.headers.host}`);
+        const field = url.searchParams.get('field') || 'downloadStatus';
+        const value = url.searchParams.get('value') || 'pending';
+        const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+
+        const records = lurlDb.getRecordsByStatus(field, value, limit);
+
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({
+          ok: true,
+          field,
+          value,
+          count: records.length,
+          records: records.map(r => ({
+            id: r.id,
+            title: r.title,
+            type: r.type,
+            capturedAt: r.capturedAt,
+            downloadStatus: r.downloadStatus,
+            thumbnailStatus: r.thumbnailStatus,
+            previewStatus: r.previewStatus,
+            hlsStatus: r.hlsStatus,
+            originalStatus: r.originalStatus,
+            downloadRetries: r.downloadRetries,
+            downloadError: r.downloadError,
+          })),
+        }));
+      } catch (err) {
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // POST /api/records/:id/status - 更新單筆狀態
+    if (req.method === 'POST' && urlPath.match(/^\/api\/records\/[^/]+\/status$/)) {
+      if (!isAdminAuthenticated(req)) {
+        res.writeHead(401, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: '請先登入' }));
+        return;
+      }
+
+      try {
+        const id = urlPath.split('/')[3];
+        const body = await parseBody(req);
+
+        // 只允許更新狀態欄位
+        const allowedFields = [
+          'sourceStatus', 'sourceCheckedAt',
+          'downloadStatus', 'downloadRetries', 'downloadError',
+          'thumbnailStatus', 'previewStatus', 'hlsStatus', 'originalStatus',
+          'lastProcessedAt', 'lastErrorAt',
+        ];
+
+        const updates = {};
+        for (const field of allowedFields) {
+          if (body[field] !== undefined) {
+            updates[field] = body[field];
+          }
+        }
+
+        if (Object.keys(updates).length === 0) {
+          res.writeHead(400, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: '沒有有效的更新欄位' }));
+          return;
+        }
+
+        const record = lurlDb.updateRecord(id, updates);
+        if (!record) {
+          res.writeHead(404, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: '記錄不存在' }));
+          return;
+        }
+
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ ok: true, record }));
+      } catch (err) {
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    // POST /api/source/report - 腳本回報來源狀態
+    if (req.method === 'POST' && urlPath === '/api/source/report') {
+      try {
+        const body = await parseBody(req);
+        const { token, reports } = body;
+
+        // 驗證 token
+        if (token !== CLIENT_TOKEN) {
+          res.writeHead(401, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: '無效的 token' }));
+          return;
+        }
+
+        if (!Array.isArray(reports) || reports.length === 0) {
+          res.writeHead(400, corsHeaders());
+          res.end(JSON.stringify({ ok: false, error: '需要 reports 陣列' }));
+          return;
+        }
+
+        const results = { updated: 0, notFound: 0, errors: [] };
+
+        for (const report of reports) {
+          try {
+            const { pageUrl, fileUrl, status } = report;
+
+            // 尋找記錄
+            let record = null;
+            if (pageUrl) {
+              record = lurlDb.findRecordByUrl(pageUrl);
+            }
+            if (!record && fileUrl) {
+              record = lurlDb.findRecordByFileUrl(fileUrl);
+            }
+
+            if (!record) {
+              results.notFound++;
+              continue;
+            }
+
+            // 更新來源狀態
+            lurlDb.updateRecord(record.id, {
+              sourceStatus: status || 'unknown',
+              sourceCheckedAt: new Date().toISOString(),
+            });
+
+            results.updated++;
+          } catch (err) {
+            results.errors.push({ report, error: err.message });
+          }
+        }
+
+        res.writeHead(200, corsHeaders());
+        res.end(JSON.stringify({ ok: true, ...results }));
+      } catch (err) {
+        res.writeHead(500, corsHeaders());
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
       return;
     }
 
@@ -10086,7 +10897,7 @@ module.exports = {
       // 如果是 admin 登入但沒有會員帳號，給予 admin 權限
       let user = getMemberFromRequest(req);
       if (!user && isAdminAuthenticated(req)) {
-        user = { id: 'admin', tier: 'admin', nickname: '管理員' };
+        user = { id: 'admin', tier: 'admin', nickname: '管理員', email: 'admin@system' };
       }
 
       sendCompressed(req, res, 200, corsHeaders('text/html; charset=utf-8'), viewPage(record, fileExists, user));
