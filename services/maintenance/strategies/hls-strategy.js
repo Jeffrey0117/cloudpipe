@@ -38,16 +38,15 @@ class HLSStrategy extends MaintenanceStrategy {
   async getPendingRecords(records, checker) {
     // 優先使用狀態欄位查詢，fallback 到 checker
     return records.filter((r) => {
-      // 使用狀態欄位
-      if (r.hlsStatus === 'pending' || r.hlsStatus === 'failed') {
-        // 必須是影片且原始檔存在
-        return r.type === 'video' && r.originalStatus === 'exists';
+      if (r.type !== 'video') return false;
+
+      // 已完成或跳過的不處理
+      if (r.hlsStatus === 'completed' || r.hlsStatus === 'skipped') {
+        return false;
       }
-      // Fallback: 使用 checker（相容舊資料）
-      if (!r.hlsStatus || r.hlsStatus === 'unknown') {
-        return checker.needsHLS(r);
-      }
-      return false;
+
+      // 使用 checker 檢查是否真的需要 HLS（有本地影片且沒 HLS）
+      return checker.needsHLS(r);
     });
   }
 

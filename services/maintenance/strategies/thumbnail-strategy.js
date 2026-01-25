@@ -22,16 +22,16 @@ class ThumbnailStrategy extends MaintenanceStrategy {
   async getPendingRecords(records, checker) {
     // 優先使用狀態欄位查詢，fallback 到 checker
     return records.filter((r) => {
-      // 使用狀態欄位
-      if (r.thumbnailStatus === 'pending' || r.thumbnailStatus === 'failed') {
-        // 影片必須已下載完成
-        return r.type === 'video' && r.downloadStatus === 'completed';
+      if (r.type !== 'video') return false;
+
+      // 已完成或跳過的不處理
+      if (r.thumbnailStatus === 'completed' || r.thumbnailStatus === 'skipped') {
+        return false;
       }
-      // Fallback: 使用 checker（相容舊資料）
-      if (!r.thumbnailStatus || r.thumbnailStatus === 'unknown') {
-        return checker.needsThumbnail(r);
-      }
-      return false;
+
+      // 使用 checker 檢查是否真的需要縮圖（有可播放影片且沒縮圖）
+      // 這樣無論 downloadStatus 是什麼值，只要有檔案就會處理
+      return checker.needsThumbnail(r);
     });
   }
 

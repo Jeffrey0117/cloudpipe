@@ -1410,9 +1410,55 @@ function adminPage() {
     .history-duration { color: #888; min-width: 60px; text-align: right; }
     .history-empty { color: #888; text-align: center; padding: 20px; }
 
+    /* ===== 響應式設計 ===== */
+
+    /* Tablet */
     @media (max-width: 768px) {
       .stats-grid { grid-template-columns: repeat(3, 1fr); }
       .quick-actions { flex-direction: column; }
+      .main-tabs { flex-wrap: wrap; }
+      .main-tab { flex: 1 1 auto; min-width: 80px; padding: 12px 10px; font-size: 0.85em; justify-content: center; }
+      .user-stats { grid-template-columns: repeat(2, 1fr); }
+      .record { flex-wrap: wrap; }
+      .record-actions { width: 100%; justify-content: flex-end; margin-top: 8px; }
+    }
+
+    /* Mobile */
+    @media (max-width: 480px) {
+      .header { flex-direction: column; gap: 10px; padding: 12px; }
+      .header nav { width: 100%; justify-content: center; gap: 12px; flex-wrap: wrap; }
+      .header nav a { font-size: 0.85em; }
+      .container { padding: 12px; }
+      .stats { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+      .stat-card { padding: 14px; }
+      .stat-card h3 { font-size: 1.5em; }
+      .main-tabs { gap: 4px; padding: 4px; }
+      .main-tab { padding: 10px 8px; font-size: 0.75em; min-width: 60px; }
+      .main-tab span:first-child { display: block; }
+      .user-stats { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+      .user-stat { padding: 12px 8px; }
+      .user-stat .value { font-size: 1.4em; }
+      .user-stat .label { font-size: 0.75em; }
+      .user-search { flex-direction: column; }
+      .user-search input { max-width: 100%; }
+      .user-item { flex-wrap: wrap; padding: 12px; }
+      .user-quota, .user-device { display: none; }
+      .user-time { width: 100%; text-align: left; margin-top: 4px; font-size: 0.75em; }
+      .record { padding: 12px; }
+      .record-thumb { width: 60px; height: 45px; }
+      .record-title { font-size: 0.9em; }
+      .record-meta { font-size: 0.75em; }
+      .history-item { flex-wrap: wrap; gap: 6px; }
+      .history-time { min-width: auto; font-size: 0.75em; }
+      .history-strategy { min-width: auto; }
+      .history-duration { min-width: auto; }
+      /* Modal 調整 */
+      #userModal > div { width: 95%; padding: 16px; }
+      #userModal h3 { font-size: 1.1em; }
+      /* 維護面板 */
+      .progress-recent { max-height: 150px; }
+      .action-group { flex-direction: column; }
+      .action-card { min-width: auto; }
     }
   </style>
 </head>
@@ -9449,7 +9495,9 @@ module.exports = {
       }
       try {
         const records = readAllRecords();
-        const untitledRecords = records.filter(r => r.title === 'untitled');
+        // 包含 'untitled' 和 'untitled_xxxxx' 開頭的記錄
+        const isUntitled = (title) => !title || title === 'untitled' || title === 'undefined' || title.startsWith('untitled_');
+        const untitledRecords = records.filter(r => isUntitled(r.title));
 
         if (untitledRecords.length === 0) {
           res.writeHead(200, corsHeaders());
@@ -9459,12 +9507,40 @@ module.exports = {
 
         // 讀取所有行
         const lines = fs.readFileSync(RECORDS_FILE, 'utf8').split('\n').filter(l => l.trim());
+        let fixedCount = 0;
         const newLines = lines.map(line => {
           try {
             const record = JSON.parse(line);
-            if (record.title === 'untitled') {
-              // 使用 ID 作為唯一標識
-              record.title = `untitled_${record.id}`;
+            if (isUntitled(record.title)) {
+              // 嘗試從 pageUrl 擷取標題
+              let newTitle = null;
+              if (record.pageUrl) {
+                try {
+                  const url = new URL(record.pageUrl);
+                  // 嘗試從 URL 路徑取得有意義的名稱
+                  const pathParts = url.pathname.split('/').filter(Boolean);
+                  if (pathParts.length > 0) {
+                    const lastPart = decodeURIComponent(pathParts[pathParts.length - 1]);
+                    // 移除副檔名和特殊字元
+                    const cleaned = lastPart.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ').trim();
+                    if (cleaned && cleaned.length > 2 && !cleaned.startsWith('untitled')) {
+                      newTitle = cleaned.substring(0, 200);
+                    }
+                  }
+                  // 如果路徑沒有好標題，用 hostname
+                  if (!newTitle) {
+                    newTitle = url.hostname.replace(/^www\./, '');
+                  }
+                } catch (e) {
+                  // URL 解析失敗
+                }
+              }
+              // 如果還是沒標題，用 ID
+              if (!newTitle) {
+                newTitle = `video_${record.id}`;
+              }
+              record.title = newTitle;
+              fixedCount++;
             }
             return JSON.stringify(record);
           } catch (e) {
@@ -9474,10 +9550,10 @@ module.exports = {
 
         // 寫回檔案
         fs.writeFileSync(RECORDS_FILE, newLines.join('\n') + '\n');
-        console.log(`[lurl] 已修復 ${untitledRecords.length} 個 untitled 記錄`);
+        console.log(`[lurl] 已修復 ${fixedCount} 個 untitled 記錄`);
 
         res.writeHead(200, corsHeaders());
-        res.end(JSON.stringify({ ok: true, fixed: untitledRecords.length }));
+        res.end(JSON.stringify({ ok: true, fixed: fixedCount, total: untitledRecords.length }));
       } catch (err) {
         console.error('[lurl] 修復 untitled 失敗:', err);
         res.writeHead(500, corsHeaders());

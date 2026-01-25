@@ -37,16 +37,15 @@ class PreviewStrategy extends MaintenanceStrategy {
   async getPendingRecords(records, checker) {
     // 優先使用狀態欄位查詢，fallback 到 checker
     return records.filter((r) => {
-      // 使用狀態欄位
-      if (r.previewStatus === 'pending' || r.previewStatus === 'failed') {
-        // 必須是影片且原始檔存在
-        return r.type === 'video' && r.originalStatus === 'exists';
+      if (r.type !== 'video') return false;
+
+      // 已完成或跳過的不處理
+      if (r.previewStatus === 'completed' || r.previewStatus === 'skipped') {
+        return false;
       }
-      // Fallback: 使用 checker（相容舊資料）
-      if (!r.previewStatus || r.previewStatus === 'unknown') {
-        return checker.needsPreview(r);
-      }
-      return false;
+
+      // 使用 checker 檢查是否真的需要預覽（有本地影片且沒預覽）
+      return checker.needsPreview(r);
     });
   }
 
