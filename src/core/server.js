@@ -37,12 +37,38 @@ if (!registry.startAll()) {
 deploy.startPolling(5 * 60 * 1000);
 
 // Graceful shutdown
-process.on('SIGINT', () => {
+const shutdown = async () => {
   console.log('');
   console.log('[*] Shutting down...');
-  deploy.stopPolling();
-  registry.stopAll();
-  process.exit(0);
+
+  try {
+    deploy.stopPolling();
+
+    // 等待伺服器完全關閉（給 3 秒時間）
+    registry.stopAll();
+
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    console.log('[*] Shutdown complete');
+    process.exit(0);
+  } catch (err) {
+    console.error('[*] Shutdown error:', err);
+    process.exit(1);
+  }
+};
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
+
+// Handle uncaught exceptions to prevent crash loops
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught exception:', err);
+  // Don't exit immediately, let the process continue
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL] Unhandled rejection at:', promise, 'reason:', reason);
+  // Don't exit immediately, let the process continue
 });
 
 console.log('----------------------------------------');
